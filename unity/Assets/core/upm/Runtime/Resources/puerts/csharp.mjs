@@ -61,6 +61,7 @@ function csTypeToClass(csType) {
         if (nestedTypes) {
             for(var i = 0; i < nestedTypes.Length; i++) {
                 let ntype = nestedTypes.get_Item(i);
+                if (ntype.Name === 'ContactEventDelegate') continue;
                 if (ntype.IsGenericType) {
                     let name = ntype.Name.split('`')[0] + '$' + ntype.GetGenericArguments().Length;
                     let fullName = ntype.FullName.split('`')[0]/**.replace(/\+/g, '.') */ + '$' + ntype.GetGenericArguments().Length;
