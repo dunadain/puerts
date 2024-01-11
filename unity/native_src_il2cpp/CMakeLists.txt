@@ -132,6 +132,7 @@ endif ()
 
 if ( NOT CMAKE_BUILD_TYPE MATCHES "Release" )
     target_compile_definitions (puerts_il2cpp PRIVATE PUERTS_DEBUG)
+    target_compile_definitions (puerts_il2cpp PRIVATE WITH_INSPECTOR)
 endif ()
 
 if ( MSYS OR WIN32 )

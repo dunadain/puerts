@@ -130,6 +130,7 @@ endif ()
 
 if ( NOT CMAKE_BUILD_TYPE MATCHES "Release" )
     target_compile_definitions (puerts PRIVATE PUERTS_DEBUG)
+    target_compile_definitions (puerts PRIVATE WITH_INSPECTOR)
 endif ()
 
 if ( MSYS OR WIN32 )
