@@ -1,6 +1,6 @@
 import { rm, setWinCMDEncodingToUTF8 } from "@puerts/shell-util";
 import { Option, program } from "commander";
-import { join } from "path";
+import path, { join } from "path";
 import downloadBackend from "./backend.mjs";
 import { dotnetTest, unityTest } from "./test.mjs";
 import runPuertsMake, { makeOSXUniveralBinary, platformCompileConfig } from "./make.mjs";
@@ -11,7 +11,7 @@ const nodePlatformToPuerPlatform = {
     "darwin": "osx",
     "win32": "win"
 }
-const cwd = process.cwd();
+let cwd = process.cwd();
 
 program
     .command("make [quickcommand]")
@@ -30,12 +30,18 @@ program
             .default("Release")
             .choices(["Release", "Debug"])
     )
+    .addOption(
+        new Option("--path <exportpath>", "the path to export")
+        .default("")
+    )
     .option("--backend <backend>", "the JS backend will be used", "v8_9.4")
     .action(function (quickcommand, options) {
         let backend = options.backend;
         let config = options.config;
         let platform = options.platform;
         let arch = options.arch;
+        let workingPath = path.resolve(options.path);
+        cwd = workingPath || cwd;
 
         if (quickcommand) {
             switch (quickcommand[0]) {
