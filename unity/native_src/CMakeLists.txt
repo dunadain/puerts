@@ -28,7 +28,12 @@ if ( NOT DEFINED JS_ENGINE )
     set(JS_ENGINE v8)
 endif()
 
-set(BACKEND_ROOT ${PROJECT_SOURCE_DIR}/.backends/${JS_ENGINE})
+set(USING_MULT_BACKEND OFF)
+if("${JS_ENGINE}" MATCHES "^mult")
+    set(USING_MULT_BACKEND ON)
+endif()
+
+set(BACKEND_ROOT ${PROJECT_SOURCE_DIR}/../native_src/.backends/${JS_ENGINE})
 
 set(ThirdParty ${PROJECT_SOURCE_DIR}/../../unreal/Puerts/ThirdParty)
 
@@ -46,22 +51,15 @@ include_directories(
 )
 
 set ( PUERTS_INC
+    Inc/Common.h
     Inc/Log.h
     Inc/BackendEnv.h
     Inc/JSEngine.h
     Inc/V8Utils.h
     Inc/JSFunction.h
+    Inc/IPuertsPlugin.h
     ${PROJECT_SOURCE_DIR}/../../unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.h
     ${PROJECT_SOURCE_DIR}/../../unreal/Puerts/Source/JsEnv/Private/PromiseRejectCallback.hpp
-)
-
-set ( PUERTS_SRC
-    Src/Puerts.cpp
-    Src/Log.cpp
-    Src/BackendEnv.cpp
-    Src/JSEngine.cpp
-    Src/JSFunction.cpp
-    ${PROJECT_SOURCE_DIR}/../../unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.cpp
 )
 
 if(DEFINED PUERTS_EXTRA_SRC)
@@ -92,6 +90,22 @@ endmacro(source_group_by_dir)
 source_group_by_dir(${CMAKE_CURRENT_SOURCE_DIR} PUERTS_INC)
 source_group_by_dir(${CMAKE_CURRENT_SOURCE_DIR} PUERTS_SRC)
 
+if( USING_MULT_BACKEND )
+    message("mult backend>>>>>>>>>>>>>>>>>>>>>>>>")
+    set ( PUERTS_SRC
+        Src/Log.cpp
+        Src/PuertsMultBackend.cpp
+    )
+else ()
+    set ( PUERTS_SRC
+        Src/Puerts.cpp
+        Src/Log.cpp
+        Src/BackendEnv.cpp
+        Src/JSEngine.cpp
+        Src/JSFunction.cpp
+        ${PROJECT_SOURCE_DIR}/../../unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.cpp
+    )
+endif()
 
 if ( APPLE )
     if ( IOS )
@@ -122,15 +136,65 @@ else ()
     )
 endif ()
 
-# target_compile_definitions (puerts PRIVATE THREAD_SAFE)
+set(PUERTS_COMPILE_DEFINITIONS)
+option ( USING_V8 "using v8" ON )
+option ( USING_QJS "using quickjs" ON )
+option ( USING_QJS_SUFFIX "add _qjs to namespace of simule v8 api " ON )
+
+if ( USING_MULT_BACKEND )
+    # -------------------begin v8 backend-------------------------
+    if ( USING_V8)
+        add_library(v8backend STATIC
+            Src/BackendEnv.cpp
+            Src/JSEngine.cpp
+            Src/JSFunction.cpp
+            ${PROJECT_SOURCE_DIR}/../../unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.cpp
+            Src/PluginImpl.cpp
+        )
+        target_include_directories (v8backend PRIVATE "${BACKEND_ROOT}/Inc/v8")
+        target_compile_definitions (v8backend PRIVATE PUERTS_NAMESPACE=puerts_v8)
+        target_compile_definitions (v8backend PRIVATE MULT_BACKENDS)
+        target_compile_definitions (v8backend PRIVATE V8_BACKEND)
+        set_target_properties(v8backend PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        target_link_libraries(puerts v8backend )
+        target_compile_definitions (puerts PRIVATE V8_BACKEND)
+    endif ()
+    # -------------------end v8 backend-------------------------
+    
+    # -------------------begin qjs backend-------------------------
+    if ( USING_QJS)
+        add_library(qjsbackend STATIC
+            Src/BackendEnv.cpp
+            Src/JSEngine.cpp
+            Src/JSFunction.cpp
+            ${PROJECT_SOURCE_DIR}/../../unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.cpp
+            Src/PluginImpl.cpp
+        )
+        target_include_directories (qjsbackend PRIVATE "${BACKEND_ROOT}/Inc/quickjs")
+        target_compile_definitions (qjsbackend PRIVATE PUERTS_NAMESPACE=puerts_qjs)
+        target_compile_definitions (qjsbackend PRIVATE MULT_BACKENDS)
+        target_compile_definitions (qjsbackend PRIVATE QJS_BACKEND)
+        target_compile_definitions (qjsbackend PRIVATE WITH_QUICKJS)
+        target_compile_definitions (qjsbackend PRIVATE WITHOUT_INSPECTOR)
+        if (USING_QJS_SUFFIX)
+            target_compile_definitions (qjsbackend PRIVATE USING_QJS_SUFFIX)
+            target_compile_definitions (qjsbackend PRIVATE CUSTOMV8NAMESPACE=v8_qjs)
+        endif ()
+        set_target_properties(qjsbackend PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        target_link_libraries(puerts qjsbackend )
+        target_compile_definitions (puerts PRIVATE QJS_BACKEND)
+    endif ()
+    # -------------------end qjs backend-------------------------
+endif ()
+
+# list(APPEND PUERTS_COMPILE_DEFINITIONS THREAD_SAFE)
 
 if ( WIN32 AND NOT CYGWIN )
-    target_compile_definitions (puerts PRIVATE BUILDING_V8_SHARED)
+    list(APPEND PUERTS_COMPILE_DEFINITIONS BUILDING_V8_SHARED)
 endif ()
 
 if ( NOT CMAKE_BUILD_TYPE MATCHES "Release" )
-    target_compile_definitions (puerts PRIVATE PUERTS_DEBUG)
-    target_compile_definitions (puerts PRIVATE WITH_INSPECTOR)
+    list(APPEND PUERTS_COMPILE_DEFINITIONS PUERTS_DEBUG)
 endif ()
 
 if ( MSYS OR WIN32 )
@@ -143,7 +207,7 @@ if ( MSYS OR WIN32 )
     endif ()
 
     # definition
-    target_compile_definitions (puerts PRIVATE PLATFORM_WINDOWS)
+    list(APPEND PUERTS_COMPILE_DEFINITIONS PLATFORM_WINDOWS)
 
 elseif ( ANDROID )
 
@@ -155,7 +219,7 @@ elseif ( ANDROID )
     set(BACKEND_LIB_NAMES "-Wl,--whole-archive$<SEMICOLON>${BACKEND_LIB_NAMES}$<SEMICOLON>-Wl,--no-whole-archive")
     if ( ANDROID_ABI STREQUAL "armeabi-v7a")
         # definition
-        target_compile_definitions (puerts PRIVATE PLATFORM_ANDROID_ARM)
+        list(APPEND PUERTS_COMPILE_DEFINITIONS PLATFORM_ANDROID_ARM)
 
     elseif ( ANDROID_ABI STREQUAL "arm64-v8a")
         # link
@@ -164,10 +228,10 @@ elseif ( ANDROID )
         )
         
         # definition
-        target_compile_definitions (puerts PRIVATE PLATFORM_ANDROID_ARM64)
+        list(APPEND PUERTS_COMPILE_DEFINITIONS PLATFORM_ANDROID_ARM64)
     else ()
 
-        target_compile_definitions (puerts PRIVATE PLATFORM_ANDROID_x64)
+        list(APPEND PUERTS_COMPILE_DEFINITIONS PLATFORM_ANDROID_x64)
     endif ()
 
     #set_target_properties( puerts PROPERTIES LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/android_version.script)
@@ -184,19 +248,19 @@ elseif ( APPLE )
     if ( IOS )
         #definition
         if(PLATFORM STREQUAL "SIMULATOR64")
-            target_compile_definitions (puerts PRIVATE PLATFORM_IOS_SIMULATOR)
+            list(APPEND PUERTS_COMPILE_DEFINITIONS PLATFORM_IOS_SIMULATOR)
             message(STATUS "SIMULATOR64 BUILD...")
         else ()
-            target_compile_definitions (puerts PRIVATE PLATFORM_IOS)
+            list(APPEND PUERTS_COMPILE_DEFINITIONS PLATFORM_IOS)
         endif ()
 
     else ()
     
         #definition
         if ( DEFINED FOR_SILICON )
-            target_compile_definitions (puerts PRIVATE PLATFORM_MAC_ARM64)
+            list(APPEND PUERTS_COMPILE_DEFINITIONS PLATFORM_MAC_ARM64)
         endif()
-        target_compile_definitions (puerts PRIVATE PLATFORM_MAC)
+        list(APPEND PUERTS_COMPILE_DEFINITIONS PLATFORM_MAC)
     endif ()
 
 elseif (UNIX)
@@ -204,17 +268,38 @@ elseif (UNIX)
     target_link_libraries(puerts pthread)
     
     # definition
-    target_compile_definitions (puerts PRIVATE PLATFORM_LINUX)
-    set(CMAKE_CXX_COMPILER "clang++")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libc++ -lc++abi")
+    list(APPEND PUERTS_COMPILE_DEFINITIONS PLATFORM_LINUX)
+    if (NOT ("${JS_ENGINE}" STREQUAL "nodejs_16"))
+        set(CMAKE_CXX_COMPILER "clang++")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -stdlib=libc++ -lc++abi")
+    endif ()
 endif ()
 
 # link
 target_link_libraries(puerts
     ${BACKEND_LIB_NAMES}
 )
-target_compile_definitions (puerts PRIVATE ${BACKEND_DEFINITIONS})
+list(APPEND PUERTS_COMPILE_DEFINITIONS ${BACKEND_DEFINITIONS})
+
+target_compile_definitions (puerts PUBLIC ${PUERTS_COMPILE_DEFINITIONS})
+if( USING_MULT_BACKEND )
+    if ( USING_V8)
+        target_compile_definitions (v8backend PUBLIC ${PUERTS_COMPILE_DEFINITIONS})
+        if ( WIN32 AND NOT CYGWIN AND NOT ( CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" ) AND NOT ANDROID AND NOT MSYS)
+            set_property(TARGET v8backend PROPERTY
+                     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        endif ()
+    endif ()
+    
+    if ( USING_QJS)
+        target_compile_definitions (qjsbackend PUBLIC ${PUERTS_COMPILE_DEFINITIONS})
+        if ( WIN32 AND NOT CYGWIN AND NOT ( CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" ) AND NOT ANDROID AND NOT MSYS)
+            set_property(TARGET qjsbackend PROPERTY
+                     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        endif ()
+    endif ()
+endif ()
 
 if ( WIN32 AND NOT CYGWIN AND NOT ( CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" ) AND NOT ANDROID AND NOT MSYS)
 	set_property(TARGET puerts PROPERTY

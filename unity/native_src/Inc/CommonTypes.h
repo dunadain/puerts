@@ -7,19 +7,28 @@
 
 #pragma once
 
-#include <string>
-
-typedef void(*LogCallback)(const char* value);
-
 namespace puerts
 {
-enum LogLevel
+
+typedef void (*FuncPtr)(void);
+
+
+enum JsValueType
 {
-    Log = 0,
-    Warning = 1,
-    Error = 2
+    NullOrUndefined = 1,
+    BigInt          = 2,
+    Number          = 4,
+    String          = 8,
+    Boolean         = 16,
+    NativeObject    = 32,
+    JsObject        = 64,
+    Array           = 128,
+    Function        = 256,
+    Date            = 512,
+    ArrayBuffer     = 1024,
+    Unknow          = 2048,
 };
 
-void PLog(LogLevel Level, const std::string Fmt, ...);
 
 }
+

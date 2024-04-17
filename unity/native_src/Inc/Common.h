@@ -7,19 +7,19 @@
 
 #pragma once
 
-#include <string>
+#include "CommonTypes.h"
 
-typedef void(*LogCallback)(const char* value);
+#pragma warning(push, 0)  
+#include "libplatform/libplatform.h"
+#include "v8.h"
+#pragma warning(pop)
 
-namespace puerts
-{
-enum LogLevel
-{
-    Log = 0,
-    Warning = 1,
-    Error = 2
-};
+#if !defined(PUERTS_NAMESPACE)
+#define PUERTS_NAMESPACE puerts
+#endif
 
-void PLog(LogLevel Level, const std::string Fmt, ...);
+#if defined(USING_QJS_SUFFIX) && defined(CUSTOMV8NAMESPACE)
+namespace v8 = CUSTOMV8NAMESPACE;
+#endif
 
-}
+

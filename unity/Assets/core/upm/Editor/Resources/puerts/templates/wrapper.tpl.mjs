@@ -29,7 +29,7 @@ class ArgumentCodeGenerator {
     }
 
     declareAndGetV8Value() {
-        return `IntPtr v8Value${this.index} = PuertsDLL.GetArgumentValue(info, ${this.index})`
+        return `IntPtr v8Value${this.index} = PuertsDLL.GetArgumentValue(isolate, info, ${this.index})`
     }
 
     v8Value() {
@@ -51,7 +51,7 @@ class ArgumentCodeGenerator {
         } else if (typeName in fixGet) {
             return `${typeName} arg${this.index} = ${fixGet[typeName](this.v8Value(), isByRef)}`;
         } else {
-            return `argobj${this.index} = argobj${this.index} != null ? argobj${this.index} : StaticTranslate<${typeInfo.TypeName}>.Get((int)data, isolate, NativeValueApi.GetValueFromArgument, v8Value${this.index}, ${typeInfo.IsByRef ? "true" : "false"}); ${typeName} arg${this.index} = (${typeName})argobj${this.index}`
+            return `${typeName} arg${this.index} = argobj${this.index} != null ? (${typeName})argobj${this.index} : StaticTranslate<${typeInfo.TypeName}>.Get((int)data, isolate, NativeValueApi.GetValueFromArgument, v8Value${this.index}, ${typeInfo.IsByRef ? "true" : "false"});`
         }
     }
 

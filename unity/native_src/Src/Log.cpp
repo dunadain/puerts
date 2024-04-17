@@ -8,30 +8,9 @@
 #include "Log.h"
 #include <stdarg.h>
 
-#pragma warning(push, 0)  
-#include "v8.h"
-#pragma warning(pop)
-
-typedef void(*LogCallback)(const char* value);
-
-LogCallback GLogCallback = nullptr;
-LogCallback GLogWarningCallback = nullptr;
-LogCallback GLogErrorCallback = nullptr;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-V8_EXPORT void SetLogCallback(LogCallback Log, LogCallback LogWarning, LogCallback LogError)
-{
-    GLogCallback = Log;
-    GLogWarningCallback = LogError;
-    GLogErrorCallback = LogWarning;
-}
-
-#ifdef __cplusplus
-}
-#endif
+extern LogCallback GLogCallback;
+extern LogCallback GLogWarningCallback;
+extern LogCallback GLogErrorCallback;
 
 namespace puerts
 {

@@ -356,9 +356,10 @@ private:
                                 (is_objecttype<typename std::decay<T>::type>::value ||
                                     is_uetype<typename std::decay<T>::type>::value)>::type>
     {
-        static typename API::ValueType Convert(typename API::ContextType context, typename std::decay<T>::type ret)
+        static typename API::ValueType Convert(typename API::ContextType context, const typename std::decay<T>::type& ret)
         {
-            return DecayTypeConverter<typename std::decay<T>::type*>::toScript(context, &ret);
+            return DecayTypeConverter<typename std::decay<T>::type*>::toScript(
+                context, &(const_cast<typename std::decay<T>::type&>(ret)));
         }
     };
 
@@ -781,7 +782,7 @@ private:
             return false;
 
         ArgumentsHolder cppArgHolders(
-            std::tuple<typename API::ContextType, typename API::ValueType>{context, GetArg(info, index)}...);
+            std::tuple<typename API::ContextType, typename API::ValueType>{context, API::GetArg(info, index)}...);
 
         DefaultValueSetter<sizeof...(Args) - sizeof...(DefaultArguments), 0, typename std::decay<Args>::type...>::Set(
             cppArgHolders, API::GetArgsLen(info), std::forward<DefaultArguments>(defaultValues)...);
@@ -813,10 +814,10 @@ private:
             return false;
 
         ArgumentsHolder cppArgHolders(
-            std::tuple<typename API::ContextType, typename API::ValueType>{context, GetArg(info, index)}...);
+            std::tuple<typename API::ContextType, typename API::ValueType>{context, API::GetArg(info, index)}...);
 
         DefaultValueSetter<sizeof...(Args) - sizeof...(DefaultArguments), 0, typename std::decay<Args>::type...>::Set(
-            cppArgHolders, GetArgsLen(info), std::forward<DefaultArguments>(defaultValues)...);
+            cppArgHolders, API::GetArgsLen(info), std::forward<DefaultArguments>(defaultValues)...);
 
         API::SetReturn(
             info, ReturnConverter<Ret>::Convert(context,
@@ -1627,7 +1628,12 @@ public:
 
     void Register()
     {
-        RegisterAPI::template Register<T>(FinalizeBuilder<T>::Build(), *this);
+        Register(FinalizeBuilder<T>::Build());
+    }
+
+    void Register(FinalizeFuncType Finalize)
+    {
+        RegisterAPI::template Register<T>(Finalize, *this);
     }
 };
 

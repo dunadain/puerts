@@ -356,8 +356,6 @@ FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::sha
                 CreateParams.constraints.set_max_old_generation_size_in_bytes(Val * 1024 * 1024);
             }
         }
-#else
-        v8::V8::SetFlagsFromString(TCHAR_TO_UTF8(*InFlags));
 #endif
     }
 
@@ -499,6 +497,8 @@ FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::sha
     MethodBindingHelper<&FJsEnvImpl::MergeObject>::Bind(Isolate, Context, Global, "__tgjsMergeObject", This);
 
     MethodBindingHelper<&FJsEnvImpl::NewObjectByClass>::Bind(Isolate, Context, Global, "__tgjsNewObject", This);
+
+    MethodBindingHelper<&FJsEnvImpl::SetJsTakeRefInTs>::Bind(Isolate, Context, Global, "__tgjsSetJsTakeRef", This);
 
     MethodBindingHelper<&FJsEnvImpl::NewStructByScriptStruct>::Bind(Isolate, Context, Global, "__tgjsNewStruct", This);
 
@@ -688,7 +688,7 @@ FJsEnvImpl::~FJsEnvImpl()
 
     for (int i = 0; i < ManualReleaseCallbackList.size(); i++)
     {
-        if (ManualReleaseCallbackList[i].IsValid())
+        if (ManualReleaseCallbackList[i].IsValid(true))
         {
             ManualReleaseCallbackList[i].Get()->JsFunction.Reset();
         }
@@ -749,7 +749,7 @@ FJsEnvImpl::~FJsEnvImpl()
         for (auto Iter = DelegateMap.begin(); Iter != DelegateMap.end(); Iter++)
         {
             Iter->second.JSObject.Reset();
-            if (Iter->second.Proxy.IsValid())
+            if (Iter->second.Proxy.IsValid(true))
             {
                 Iter->second.Proxy->JsFunction.Reset();
             }
@@ -765,7 +765,7 @@ FJsEnvImpl::~FJsEnvImpl()
         {
             for (auto& Callback : KV.Value)
             {
-                if (Callback.IsValid())
+                if (Callback.IsValid(true))
                 {
                     Callback->JsFunction.Reset();
                 }
@@ -782,8 +782,8 @@ FJsEnvImpl::~FJsEnvImpl()
 
         for (auto Iter = TimerInfos.CreateIterator(); Iter; ++Iter)
         {
-            Iter->Callback.Reset();
-            FUETicker::GetCoreTicker().RemoveTicker(Iter->TickerHandle);
+            Iter->Value.Callback.Reset();
+            FUETicker::GetCoreTicker().RemoveTicker(Iter->Value.TickerHandle);
         }
         TimerInfos.Empty();
 
@@ -1034,7 +1034,7 @@ void FJsEnvImpl::NewObjectByClass(const v8::FunctionCallbackInfo<v8::Value>& Inf
 
     if (Class)
     {
-        if (Info.Length() > 1)
+        if (Info.Length() > 1 && !Info[1]->IsNullOrUndefined())
         {
             Outer = FV8Utils::GetUObject(Context, Info[1]);
             if (FV8Utils::IsReleasedPtr(Outer))
@@ -1043,17 +1043,37 @@ void FJsEnvImpl::NewObjectByClass(const v8::FunctionCallbackInfo<v8::Value>& Inf
                 return;
             }
         }
-        if (Info.Length() > 2)
+        if (Info.Length() > 2 && !Info[2]->IsNullOrUndefined())
         {
             Name = FName(*FV8Utils::ToFString(Isolate, Info[2]));
         }
-        if (Info.Length() > 3)
+        if (Info.Length() > 3 && !Info[3]->IsNullOrUndefined())
         {
             ObjectFlags = (EObjectFlags) (Info[3]->Int32Value(Context).ToChecked());
         }
         UObject* Object = NewObject<UObject>(Outer, Class, Name, ObjectFlags);
 
         auto Result = FV8Utils::IsolateData<IObjectMapper>(Isolate)->FindOrAdd(Isolate, Context, Object->GetClass(), Object);
+        bool NeedJsTakeRef = true;
+        if (Info.Length() > 4 && !Info[4]->IsNullOrUndefined())
+        {
+            if (Info[4]->BooleanValue(Isolate))
+            {
+            }
+            else
+            {
+                NeedJsTakeRef = false;
+            }
+        }
+#if PUERTS_KEEP_UOBJECT_REFERENCE
+#else
+        if (NeedJsTakeRef)
+        {
+            bool Existed;
+            auto TemplateInfoPtr = GetTemplateInfoOfType(Class, Existed);
+            SetJsTakeRef(Object, static_cast<FClassWrapper*>(TemplateInfoPtr->StructWrapper.get()));
+        }
+#endif
         Info.GetReturnValue().Set(Result);
     }
     else
@@ -1685,20 +1705,30 @@ bool FJsEnvImpl::IsTypeScriptGeneratedClass(UClass* Class)
 void FJsEnvImpl::Bind(FClassWrapper* ClassWrapper, UObject* UEObject,
     v8::Local<v8::Object> JSObject)    // Just call in FClassReflection::Call, new a Object
 {
-    if (!ClassWrapper->IsNativeTakeJsRef)
-    {
-        UserObjectRetainer.Retain(UEObject);
-    }
+#if PUERTS_KEEP_UOBJECT_REFERENCE
+    const bool IsNativeTakeJsRef = ClassWrapper->IsNativeTakeJsRef;
+#else
+    const bool ClassWrapperIsNativeTakeJsRef = ClassWrapper->IsNativeTakeJsRef;    //这个值只有mixin会进行设置
+    const bool IsUClass = UEObject->IsA<UClass>();
+    const bool IsCDO = UEObject->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject);
+    const bool IsNativeTakeJsRef = (IsCDO || IsUClass) ? false : ClassWrapperIsNativeTakeJsRef;
+#endif
 
     DataTransfer::SetPointer(MainIsolate, JSObject, UEObject, 0);
     DataTransfer::SetPointer(MainIsolate, JSObject, nullptr, 1);
     ObjectMap.Emplace(UEObject, v8::UniquePersistent<v8::Value>(MainIsolate, JSObject));
 
-    if (!ClassWrapper->IsNativeTakeJsRef)
+    if (!IsNativeTakeJsRef)
     {
-        ObjectMap[UEObject].SetWeak<UClass>(
-            (UClass*) ClassWrapper->Struct.Get(), FClassWrapper::OnGarbageCollected, v8::WeakCallbackType::kInternalFields);
+        SetJsTakeRef(UEObject, ClassWrapper);
     }
+}
+
+void FJsEnvImpl::SetJsTakeRef(UObject* UEObject, FClassWrapper* ClassWrapper)
+{
+    UserObjectRetainer.Retain(UEObject);
+    ObjectMap[UEObject].SetWeak<UClass>(
+        Cast<UClass>(ClassWrapper->Struct.Get()), FClassWrapper::OnGarbageCollected, v8::WeakCallbackType::kInternalFields);
 }
 
 void FJsEnvImpl::UnBind(UClass* Class, UObject* UEObject, bool ResetPointer)
@@ -2355,38 +2385,93 @@ bool FJsEnvImpl::AddToDelegate(
 
     auto JsCallbacks = Iter->second.JsCallbacks.Get(Isolate);
 
-    (void) (JsCallbacks->Set(Context, JsCallbacks->Length(), JsFunction));    // push
-
+    UDynamicDelegateProxy* DelegateProxy = nullptr;
+    bool InitApplyFunc = false;
     if (Iter->second.Proxy.IsValid())
     {
-        return true;
+        DelegateProxy = Iter->second.Proxy.Get();
+        if (Iter->second.DelegateProperty)
+        {
+            if (!static_cast<FScriptDelegate*>(DelegatePtr)->IsBoundToObject(DelegateProxy))
+            {
+                InitApplyFunc = true;
+            }
+        }
+        else if (Iter->second.MulticastDelegateProperty)
+        {
+#if ENGINE_MINOR_VERSION >= 23 || ENGINE_MAJOR_VERSION > 4
+            if (Iter->second.MulticastDelegateProperty->IsA<MulticastSparseDelegatePropertyMacro>())
+            {
+                if (!FSparseDelegateStorage::Contains(
+                        Iter->second.Owner.Get(), Iter->second.MulticastDelegateProperty->GetFName(), DelegateProxy, NAME_Fire))
+                {
+                    InitApplyFunc = true;
+                }
+            }
+            else
+            {
+#endif
+                if (!static_cast<FMulticastScriptDelegate*>(DelegatePtr)->Contains(DelegateProxy, NAME_Fire))
+                {
+                    InitApplyFunc = true;
+                }
+            }
+        }
+        if (InitApplyFunc)
+        {
+            if (JsCallbacks->Length() > 0)
+            {
+                JsCallbacks = v8::Array::New(Isolate);
+                Iter->second.JsCallbacks.Reset(Isolate, JsCallbacks);
+            }
+            else
+            {
+                InitApplyFunc = false;
+            }
+        }
     }
-
-    UDynamicDelegateProxy* DelegateProxy = NewObject<UDynamicDelegateProxy>();
+    else
+    {
+        DelegateProxy = NewObject<UDynamicDelegateProxy>();
 
 #ifdef THREAD_SAFE
-    DelegateProxy->Isolate = Isolate;
+        DelegateProxy->Isolate = Isolate;
 #endif
-    DelegateProxy->Owner = Iter->second.Owner;
-    DelegateProxy->SignatureFunction = Iter->second.SignatureFunction;
-    DelegateProxy->DynamicInvoker = DynamicInvoker;
+        DelegateProxy->Owner = Iter->second.Owner;
+        DelegateProxy->SignatureFunction = Iter->second.SignatureFunction;
+        DelegateProxy->DynamicInvoker = DynamicInvoker;
 
-    v8::Local<v8::Value> Args[] = {JsCallbacks};
+        InitApplyFunc = true;
 
-    v8::Local<v8::Value> Apply;
-    if (!GenListApply.Get(Isolate)->Call(Context, v8::Undefined(Isolate), 1, Args).ToLocal(&Apply) || !Apply->IsFunction())
-    {
-        Logger->Error("gen callback apply fail!");
-        return false;
+        SysObjectRetainer.Retain(DelegateProxy);
+        Iter->second.Proxy = DelegateProxy;
     }
-    DelegateProxy->JsFunction = v8::UniquePersistent<v8::Function>(Isolate, v8::Local<v8::Function>::Cast(Apply));
 
-    SysObjectRetainer.Retain(DelegateProxy);
+    if (InitApplyFunc)
+    {
+        v8::TryCatch TryCatch(Isolate);
+        v8::Local<v8::Value> Args[] = {JsCallbacks};
+
+        v8::Local<v8::Value> Apply;
+        if (!GenListApply.Get(Isolate)->Call(Context, v8::Undefined(Isolate), 1, Args).ToLocal(&Apply) || !Apply->IsFunction())
+        {
+            FString ErrMsg = TEXT("Unknow");
+            if (TryCatch.HasCaught())
+            {
+                ErrMsg = FV8Utils::TryCatchToString(Isolate, &TryCatch);
+            }
+            Logger->Error(FString::Printf(TEXT("gen callback apply fail: %s"), *ErrMsg));
+            return false;
+        }
+        DelegateProxy->JsFunction = v8::UniquePersistent<v8::Function>(Isolate, v8::Local<v8::Function>::Cast(Apply));
+    }
+
+    bool bSingleDelegate = Iter->second.DelegateProperty != nullptr;
+    (void) (JsCallbacks->Set(Context, bSingleDelegate ? 0 : JsCallbacks->Length(), JsFunction));    // push
 
     FScriptDelegate Delegate;
     Delegate.BindUFunction(DelegateProxy, NAME_Fire);
 
-    Iter->second.Proxy = DelegateProxy;
     if (Iter->second.DelegateProperty)
     {
         // UE_LOG(LogTemp, Warning, TEXT("bind to delegate"));
@@ -2605,8 +2690,8 @@ bool FJsEnvImpl::ClearDelegate(v8::Isolate* Isolate, v8::Local<v8::Context>& Con
     if (Iter->second.Proxy.IsValid())
     {
         Iter->second.Proxy->JsFunction.Reset();
-        Iter->second.Proxy.Reset();
         SysObjectRetainer.Release(Iter->second.Proxy.Get());
+        Iter->second.Proxy.Reset();
     }
 
     Iter->second.JsCallbacks.Reset(Isolate, v8::Array::New(Isolate));
@@ -2959,17 +3044,22 @@ FJsEnvImpl::FTemplateInfo* FJsEnvImpl::GetTemplateInfoOfType(UStruct* InStruct, 
                         .ToLocalChecked());
 #endif
             }
-
+#if PUERTS_KEEP_UOBJECT_REFERENCE
             StructWrapper->IsNativeTakeJsRef = StructWrapper->IsTypeScriptGeneratedClass = IsTypeScriptGeneratedClass(Class);
-
+#endif
             auto SuperClass = Class->GetSuperClass();
             if (SuperClass)
             {
                 bool Dummy;
-                if (IsReuseTemplate)
-                    __USE(GetTemplateInfoOfType(SuperClass, Dummy));
-                else
-                    Template->Inherit(GetTemplateInfoOfType(SuperClass, Dummy)->Template.Get(Isolate));
+                auto SuperTemplateInfo = GetTemplateInfoOfType(SuperClass, Dummy);
+                if (!IsReuseTemplate)
+                {
+                    Template->Inherit(SuperTemplateInfo->Template.Get(Isolate));
+                }
+                if (SuperTemplateInfo->StructWrapper->IsNativeTakeJsRef)
+                {
+                    StructWrapper->IsNativeTakeJsRef = true;
+                }
             }
         }
 
@@ -3231,6 +3321,19 @@ void FJsEnvImpl::UEClassToJSClass(const v8::FunctionCallbackInfo<v8::Value>& Inf
     {
         FV8Utils::ThrowException(Isolate, FString::Printf(TEXT("argument #0 expect a UField")));
     }
+}
+
+void FJsEnvImpl::SetJsTakeRefInTs(const v8::FunctionCallbackInfo<v8::Value>& Info)
+{
+    v8::Isolate* Isolate = Info.GetIsolate();
+    v8::Local<v8::Context> Context = Isolate->GetCurrentContext();
+    CHECK_V8_ARGS(EArgObject);
+
+    UObject* Object = FV8Utils::GetUObject(Context, Info[0]);
+
+    bool Existed;
+    auto TemplateInfoPtr = GetTemplateInfoOfType(Object->GetClass(), Existed);
+    SetJsTakeRef(Object, static_cast<FClassWrapper*>(TemplateInfoPtr->StructWrapper.get()));
 }
 
 bool FJsEnvImpl::GetContainerTypeProperty(v8::Local<v8::Context> Context, v8::Local<v8::Value> Value, PropertyMacro** PropertyPtr)
@@ -3884,13 +3987,17 @@ void FJsEnvImpl::SetFTickerDelegate(const v8::FunctionCallbackInfo<v8::Value>& I
     v8::Isolate* Isolate = Info.GetIsolate();
     v8::Local<v8::Context> Context = Isolate->GetCurrentContext();
 
-    int DelegateHandleId = TimerInfos.Add(FTimerInfo());
-    TimerInfos[DelegateHandleId].Callback.Reset(Isolate, v8::Local<v8::Function>::Cast(Info[0]));
+    while (!(++TimerID))    // TimerID > 0
+    {
+    }
+    uint32_t DelegateHandleId = TimerID;
+    FTimerInfo& TimerInfo = TimerInfos.Emplace(DelegateHandleId, FTimerInfo());
+    TimerInfo.Callback.Reset(Isolate, v8::Local<v8::Function>::Cast(Info[0]));
 
     float Millisecond = Info[1]->NumberValue(Context).ToChecked();
     float Delay = Millisecond / 1000.f;
 
-    TimerInfos[DelegateHandleId].TickerHandle =
+    TimerInfo.TickerHandle =
         FUETicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([this, DelegateHandleId, Continue](float)
                                                  { return this->TimerCallback(DelegateHandleId, Continue); }),
             Delay);
@@ -3913,12 +4020,14 @@ bool FJsEnvImpl::TimerCallback(int DelegateHandleId, bool Continue)
     v8::Local<v8::Context> Context = DefaultContext.Get(Isolate);
     v8::Context::Scope ContextScope(Context);
 
-    if (!TimerInfos.IsValidIndex(DelegateHandleId))
+    FTimerInfo* PTimeInfo = TimerInfos.Find(DelegateHandleId);
+    if (!PTimeInfo)
     {
         Logger->Warn(FString::Printf(TEXT("Try to callback a invalid timer: %d"), DelegateHandleId));
         return false;
     }
 
+    auto OriginHandle = PTimeInfo->TickerHandle;
     v8::Local<v8::Function> Function = TimerInfos[DelegateHandleId].Callback.Get(Isolate);
 
     v8::TryCatch TryCatch(Isolate);
@@ -3931,22 +4040,24 @@ bool FJsEnvImpl::TimerCallback(int DelegateHandleId, bool Continue)
         Logger->Error(Message);
     }
 
-    if (!Continue)
+    auto ClearInCallback = !TimerInfos.Contains(DelegateHandleId) || (OriginHandle != TimerInfos[DelegateHandleId].TickerHandle);
+
+    if (!Continue && !ClearInCallback)
     {
         RemoveFTickerDelegateHandle(DelegateHandleId);
     }
 
-    return Continue && TimerInfos.IsAllocated(DelegateHandleId);
+    return Continue && !ClearInCallback;
 }
 
 void FJsEnvImpl::RemoveFTickerDelegateHandle(int DelegateHandleId)
 {
-    if (!TimerInfos.IsValidIndex(DelegateHandleId))
+    if (!TimerInfos.Contains(DelegateHandleId))
     {
         return;
     }
     FUETicker::GetCoreTicker().RemoveTicker(TimerInfos[DelegateHandleId].TickerHandle);
-    TimerInfos.RemoveAt(DelegateHandleId);
+    TimerInfos.Remove(DelegateHandleId);
 }
 
 void FJsEnvImpl::ClearInterval(const v8::FunctionCallbackInfo<v8::Value>& Info)
@@ -4208,6 +4319,13 @@ void FJsEnvImpl::Mixin(const v8::FunctionCallbackInfo<v8::Value>& Info)
     bool IsReuseTemplate = false;
     auto StructWrapper = GetStructWrapper(New, IsReuseTemplate);
     StructWrapper->IsNativeTakeJsRef = TakeJsObjectRef;
+    for (auto& KV : TypeToTemplateInfoMap)
+    {
+        if (New != KV.Key && KV.Key->IsChildOf(New))
+        {
+            KV.Value.StructWrapper->IsNativeTakeJsRef = TakeJsObjectRef;
+        }
+    }
     Info.GetReturnValue().Set(FindOrAdd(Isolate, Context, New->GetClass(), New));
 }
 #endif

@@ -55,6 +55,16 @@ namespace Puerts.UnitTest
             aach.InstanceMethod();
             System.Console.WriteLine("" + AccessControlHelper.StaticField + AnotherAccessControlHelper.StaticField + ach.InstanceField + aach.InstanceField);
         }
+        
+#if PUERTS_GENERAL
+        [OneTimeTearDown]
+        public void Cleanup()
+        {
+            //GC.Collect();
+            //GC.WaitForPendingFinalizers();
+            DefaultDontBindingEnv.Dispose();
+        }
+#endif
 
         [Test]
         public void AllMemberIsUndefinedInDefaultDontBindingEnv()

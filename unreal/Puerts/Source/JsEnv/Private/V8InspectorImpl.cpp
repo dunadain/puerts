@@ -16,6 +16,10 @@
 
 #include "V8InspectorImpl.h"
 
+#if USING_UE
+#include "UECompatible.h"
+#endif
+
 #include <functional>
 #include <string>
 #include <locale>
@@ -37,7 +41,6 @@
 
 #if USING_UE
 #include "Containers/Ticker.h"
-#include "UECompatible.h"
 #else
 #include "Log.h"
 #endif
@@ -51,7 +54,8 @@ namespace PUERTS_NAMESPACE
 class V8InspectorChannelImpl : public v8_inspector::V8Inspector::Channel, public V8InspectorChannel
 {
 public:
-    V8InspectorChannelImpl(const std::unique_ptr<v8_inspector::V8Inspector>& InV8Inspector, const int32_t InCxtGroupID);
+    V8InspectorChannelImpl(
+        v8::Isolate* InIsolate, const std::unique_ptr<v8_inspector::V8Inspector>& InV8Inspector, const int32_t InCxtGroupID);
 
     void DispatchProtocolMessage(const std::string& Message) override;
 
@@ -76,12 +80,15 @@ private:
     std::unique_ptr<v8_inspector::V8InspectorSession> V8InspectorSession;
 
     std::function<void(const std::string&)> OnSendMessage;
+
+    v8::Isolate* Isolate;
 };
 
 V8InspectorChannelImpl::V8InspectorChannelImpl(
-    const std::unique_ptr<v8_inspector::V8Inspector>& InV8Inspector, const int32_t InCxtGroupID)
+    v8::Isolate* InIsolate, const std::unique_ptr<v8_inspector::V8Inspector>& InV8Inspector, const int32_t InCxtGroupID)
 {
     v8_inspector::StringView DummyState;
+    Isolate = InIsolate;
     V8InspectorSession = InV8Inspector->connect(InCxtGroupID, this, DummyState);
 }
 
@@ -92,6 +99,11 @@ void V8InspectorChannelImpl::DispatchProtocolMessage(const std::string& Message)
 
     v8_inspector::StringView StringView(MessagePtr, MessageLen);
 
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
+    v8::Isolate::Scope IsolateScope(Isolate);
+    v8::SealHandleScope HandleScope(Isolate);
     V8InspectorSession->dispatchProtocolMessage(StringView);
 }
 
@@ -326,8 +338,8 @@ V8InspectorClientImpl::V8InspectorClientImpl(int32_t InPort, v8::Local<v8::Conte
 #if USING_UE
         ReportException(Exception, TEXT("Failed to Startup Inspector"));
 #else
-        PLog(Error, "V8InspectorClientImpl: %s", Exception.what());
-        PLog(Error, "Failed to Startup Inspector.");
+        puerts::PLog(puerts::Error, "V8InspectorClientImpl: %s", Exception.what());
+        puerts::PLog(puerts::Error, "Failed to Startup Inspector.");
 #endif
     }
 
@@ -336,7 +348,7 @@ V8InspectorClientImpl::V8InspectorClientImpl(int32_t InPort, v8::Local<v8::Conte
 
 V8InspectorChannel* V8InspectorClientImpl::CreateV8InspectorChannel()
 {
-    return new V8InspectorChannelImpl(V8Inspector, CtxGroupID);
+    return new V8InspectorChannelImpl(Isolate, V8Inspector, CtxGroupID);
 }
 
 V8InspectorClientImpl::~V8InspectorClientImpl()
@@ -395,7 +407,7 @@ bool V8InspectorClientImpl::Tick(float /* DeltaTime */)
 #if USING_UE
         ReportException(Exception, TEXT("Tick"));
 #else
-        PLog(Error, "Tick: %s", Exception.what());
+        puerts::PLog(puerts::Error, "Tick: %s", Exception.what());
 #endif
     }
     return true;
@@ -419,7 +431,7 @@ void V8InspectorClientImpl::OnHTTP(wspp_connection_hdl Handle)
 #if USING_UE
             UE_LOG(LogV8Inspector, Display, TEXT("request /json/list"));
 #else
-            PLog(Log, "request /json/list");
+            puerts::PLog(puerts::Log, "request /json/list");
 #endif
             Connection->set_body(JSONList);
             Connection->set_status(websocketpp::http::status_code::ok);
@@ -429,7 +441,7 @@ void V8InspectorClientImpl::OnHTTP(wspp_connection_hdl Handle)
 #if USING_UE
             UE_LOG(LogV8Inspector, Display, TEXT("request /json/version"));
 #else
-            PLog(Log, "request /json/version");
+            puerts::PLog(puerts::Log, "request /json/version");
 #endif
             Connection->set_body(JSONVersion);
             Connection->set_status(websocketpp::http::status_code::ok);
@@ -439,7 +451,7 @@ void V8InspectorClientImpl::OnHTTP(wspp_connection_hdl Handle)
 #if USING_UE
             UE_LOG(LogV8Inspector, Display, TEXT("404 Not Found"));
 #else
-            PLog(Log, "404 Not Found");
+            puerts::PLog(puerts::Log, "404 Not Found");
 #endif
             Connection->set_body("404 Not Found");
             Connection->set_status(websocketpp::http::status_code::not_found);
@@ -450,20 +462,20 @@ void V8InspectorClientImpl::OnHTTP(wspp_connection_hdl Handle)
 #if USING_UE
         ReportException(Exception, TEXT("OnHTTP"));
 #else
-        PLog(Error, "OnHTTP: %s", Exception.what());
+        puerts::PLog(puerts::Error, "OnHTTP: %s", Exception.what());
 #endif
     }
 }
 
 void V8InspectorClientImpl::OnOpen(wspp_connection_hdl Handle)
 {
-    V8InspectorChannelImpl* channel = new V8InspectorChannelImpl(V8Inspector, CtxGroupID);
+    V8InspectorChannelImpl* channel = new V8InspectorChannelImpl(Isolate, V8Inspector, CtxGroupID);
     V8InspectorChannels[Handle.lock().get()] = channel;
     channel->OnMessage(std::bind(&V8InspectorClientImpl::OnSendMessage, this, Handle, std::placeholders::_1));
 #if USING_UE
     UE_LOG(LogV8Inspector, Display, TEXT("Inspector: Connect"));
 #else
-    PLog(Log, "Inspector: Connect");
+    puerts::PLog(puerts::Log, "Inspector: Connect");
 #endif
 }
 
@@ -472,7 +484,7 @@ void V8InspectorClientImpl::OnReceiveMessage(wspp_connection_hdl Handle, wspp_me
     //#if USING_UE
     //    UE_LOG(LogV8Inspector, Display, TEXT("<---: %s"), ANSI_TO_TCHAR(Message->get_payload().c_str()));
     //#else
-    //    PLog(Log, "<---: %s", Message->get_payload().c_str());
+    //    puerts::PLog(puerts::Log, "<---: %s", Message->get_payload().c_str());
     //#endif
     auto channel = V8InspectorChannels[Handle.lock().get()];
 
@@ -489,7 +501,7 @@ void V8InspectorClientImpl::OnSendMessage(wspp_connection_hdl Handle, const std:
     //#if USING_UE
     //    UE_LOG(LogV8Inspector, Display, TEXT("--->: %s"), ANSI_TO_TCHAR(Message.c_str()));
     //#else
-    //    PLog(Log, "--->: %s", Message.c_str());
+    //    puerts::PLog(puerts::Log, "--->: %s", Message.c_str());
     //#endif
 
     try
@@ -501,7 +513,7 @@ void V8InspectorClientImpl::OnSendMessage(wspp_connection_hdl Handle, const std:
 #if USING_UE
         ReportException(Exception, TEXT("OnSendMessage"));
 #else
-        PLog(Error, "OnSendMessage: %s", Exception.what());
+        puerts::PLog(puerts::Error, "OnSendMessage: %s", Exception.what());
 #endif
     }
 }

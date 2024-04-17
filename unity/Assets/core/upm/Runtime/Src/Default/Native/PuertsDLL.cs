@@ -96,13 +96,13 @@ namespace Puerts
         }
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int GetLibBackend();
+        public static extern int GetLibBackend(IntPtr isolate);
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr CreateJSEngine();
+        public static extern IntPtr CreateJSEngine(int backendType);
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr CreateJSEngineWithExternalEnv(IntPtr externalRuntime, IntPtr externalContext);
+        public static extern IntPtr CreateJSEngineWithExternalEnv(int backendType, IntPtr externalRuntime, IntPtr externalContext);
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern void DestroyJSEngine(IntPtr isolate);
@@ -351,7 +351,7 @@ namespace Puerts
         public static extern void ReturnJSObject(IntPtr isolate, IntPtr info, IntPtr JSObject);
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr GetArgumentValue(IntPtr info, int index);
+        public static extern IntPtr GetArgumentValue(IntPtr isolate, IntPtr info, int index);
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern JsValueType GetJsValueType(IntPtr isolate, IntPtr value, bool isByRef);
@@ -553,11 +553,7 @@ namespace Puerts
         public static extern bool ResultIsBigInt(IntPtr resultInfo);
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-#if UNITY_WEBGL && !UNITY_EDITOR
-        public static extern IntPtr GetBigIntFromResult(IntPtr resultInfo);
-#else
         public static extern long GetBigIntFromResult(IntPtr resultInfo);
-#endif
 
         public static long GetBigIntFromResultCheck(IntPtr resultInfo)
         {
@@ -565,11 +561,7 @@ namespace Puerts
             {
                 return 0;
             }
-#if UNITY_WEBGL && !UNITY_EDITOR
-            return Marshal.ReadInt64(GetBigIntFromResult(resultInfo));
-#else
             return GetBigIntFromResult(resultInfo);
-#endif
         }
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]

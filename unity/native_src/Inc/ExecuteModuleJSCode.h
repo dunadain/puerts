@@ -1,4 +1,6 @@
-namespace puerts
+#include "Common.h"
+
+namespace PUERTS_NAMESPACE
 {
     static const char* ExecuteModuleJSCode = "                                                      \n"
 "(function() {                                                                                      \n"
@@ -194,7 +196,7 @@ namespace puerts
 "        if (loader.IsESM) isESM = specifier.startsWith('puerts/') || loader.IsESM(specifier)       \n"
 "        if (!isESM && puer.require) return `export default puer.require('${specifier}')`           \n"
 "        const content = loader.ReadFile(specifier, debugpathRef);                                  \n"
-"        if (!content) {                                                                            \n"
+"        if (content === undefined) {                                                                            \n"
 "            throw new Error(`[Puer003]import ${originSp} failed: module not found`);               \n"
 "        }                                                                                          \n"
 "        return content                                                                             \n"
