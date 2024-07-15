@@ -60,7 +60,11 @@ namespace PUERTS_NAMESPACE
 
         v8::Local<v8::String> Source = Info[0]->ToString(Context).ToLocalChecked();
         v8::Local<v8::String> Name = Info[1]->ToString(Context).ToLocalChecked();
+#if defined(V8_94_OR_NEWER) && !defined(WITH_QUICKJS)
+        v8::ScriptOrigin Origin(Isolate, Name);
+#else
         v8::ScriptOrigin Origin(Name);
+#endif
         auto Script = v8::Script::Compile(Context, Source, &Origin);
         if (Script.IsEmpty())
         {
@@ -261,7 +265,11 @@ namespace PUERTS_NAMESPACE
 
         v8::Local<v8::String> Url = FV8Utils::V8String(Isolate, Path == nullptr ? "" : Path);
         v8::Local<v8::String> Source = FV8Utils::V8String(Isolate, Code);
+#if defined(V8_94_OR_NEWER) && !defined(WITH_QUICKJS)
+        v8::ScriptOrigin Origin(Isolate, Url);
+#else
         v8::ScriptOrigin Origin(Url);
+#endif
         v8::TryCatch TryCatch(Isolate);
 
         auto CompiledScript = v8::Script::Compile(Context, Source, &Origin);
@@ -424,7 +432,11 @@ namespace PUERTS_NAMESPACE
         auto Pos = CallbackInfos.size();
         auto CallbackInfo = new FCallbackInfo(IsStatic, Callback, Data);
         CallbackInfos.push_back(CallbackInfo);
+#if defined(WITH_QUICKJS)
         return v8::FunctionTemplate::New(Isolate, CSharpFunctionCallbackWrap, v8::External::New(Isolate, CallbackInfos[Pos]));
+#else
+        return v8::FunctionTemplate::New(Isolate, CSharpFunctionCallbackWrap, v8::External::New(Isolate, CallbackInfos[Pos]),  v8::Local<v8::Signature>(), 0,  v8::ConstructorBehavior::kThrow);
+#endif
     }
 
     void JSEngine::SetGlobalFunction(const char *Name, CSharpFunctionCallback Callback, int64_t Data)
@@ -731,4 +743,9 @@ namespace PUERTS_NAMESPACE
 
         return BackendEnv.ClearModuleCache(MainIsolate, Context, Path);
     }
+
+    std::string JSEngine::GetJSStackTrace()
+	{
+        return BackendEnv.GetJSStackTrace();
+	}
 }

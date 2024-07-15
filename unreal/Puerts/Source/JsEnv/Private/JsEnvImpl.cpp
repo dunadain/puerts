@@ -32,11 +32,6 @@
 #endif
 #include "ContainerMeta.h"
 
-#pragma warning(push, 0)
-#include "libplatform/libplatform.h"
-#include "v8.h"
-#pragma warning(pop)
-
 #include "V8InspectorImpl.h"
 #if USE_WASM3
 #include "WasmModuleInstance.h"
@@ -69,6 +64,7 @@
 #endif
 
 #else
+PRAGMA_DISABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #if PLATFORM_WINDOWS
 #include <windows.h>
 #elif PLATFORM_LINUX
@@ -79,6 +75,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #endif
+PRAGMA_ENABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #endif
 
 #if !defined(ENGINE_INDEPENDENT_JSENV)
@@ -323,24 +320,23 @@ void FJsEnvImpl::StopPolling()
 
 #endif
 
+#if defined(WITH_V8_BYTECODE)
+struct FCodeCacheHeader
+{
+    uint32_t MagicNumber;
+    uint32_t VersionHash;
+    uint32_t SourceHash;
+    uint32_t FlagHash;
+    uint32_t PayloadLength;
+    uint32_t Checksum;
+};
+#endif
+
 FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::shared_ptr<ILogger> InLogger, int InDebugPort,
     std::function<void(const FString&)> InOnSourceLoadedCallback, const FString InFlags, void* InExternalRuntime,
     void* InExternalContext)
 {
     GUObjectArray.AddUObjectDeleteListener(static_cast<FUObjectArray::FUObjectDeleteListener*>(this));
-
-#if PLATFORM_IOS
-    char Flags[] = "--jitless --no-expose-wasm";
-    v8::V8::SetFlagsFromString(Flags, sizeof(Flags));
-#endif
-
-#ifdef WITH_V8_FAST_CALL
-    char FCFlags[] = "--turbo-fast-api-calls";
-    v8::V8::SetFlagsFromString(FCFlags, sizeof(FCFlags));
-#endif
-
-    // char GCFlags[] = "--expose-gc";
-    // v8::V8::SetFlagsFromString(GCFlags, sizeof(GCFlags));
 
     if (!InFlags.IsEmpty())
     {
@@ -379,7 +375,7 @@ FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::sha
 #endif
 
     CreateParams.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-#if WITH_QUICKJS
+#ifdef WITH_QUICKJS
     MainIsolate = InExternalRuntime ? v8::Isolate::New(InExternalRuntime) : v8::Isolate::New(CreateParams);
 #else
     check(!InExternalRuntime && !InExternalContext);
@@ -394,7 +390,7 @@ FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::sha
     v8::Isolate::Scope Isolatescope(Isolate);
     v8::HandleScope HandleScope(Isolate);
 
-#if WITH_QUICKJS
+#ifdef WITH_QUICKJS
     v8::Local<v8::Context> Context =
         (InExternalRuntime && InExternalContext) ? v8::Context::New(Isolate, InExternalContext) : v8::Context::New(Isolate);
 #else
@@ -635,6 +631,10 @@ FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::sha
 
     GenListApply.Reset(
         Isolate, PuertsObj->Get(Context, FV8Utils::ToV8String(Isolate, "__genListApply")).ToLocalChecked().As<v8::Function>());
+#if defined(WITH_V8_BYTECODE)
+    GenEmptyCode.Reset(
+        Isolate, PuertsObj->Get(Context, FV8Utils::ToV8String(Isolate, "generateEmptyCode")).ToLocalChecked().As<v8::Function>());
+#endif
 
     DelegateProxiesCheckerHandler =
         FUETicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FJsEnvImpl::CheckDelegateProxies), 1);
@@ -653,6 +653,15 @@ FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::sha
     //创建默认的runtime
     PuertsWasmRuntimeList.Add(std::make_shared<WasmRuntime>(PuertsWasmEnv.get()));
     ExecuteModule("puerts/wasm3_helper.js");
+#endif
+#if defined(WITH_V8_BYTECODE)
+    auto Script = v8::Script::Compile(Context, FV8Utils::ToV8String(Isolate, "")).ToLocalChecked();
+    auto CachedCode = v8::ScriptCompiler::CreateCodeCache(Script->GetUnboundScript());
+    const FCodeCacheHeader* CodeCacheHeader = (const FCodeCacheHeader*) CachedCode->data;
+    Expect_FlagHash = CodeCacheHeader->FlagHash;    // get FlagHash
+#if !WITH_EDITOR
+    delete CachedCode;    //编辑器下是v8.dll分配的，ue里的delete被重载了，这delete会有问题
+#endif
 #endif
 }
 
@@ -851,6 +860,9 @@ FJsEnvImpl::~FJsEnvImpl()
 #endif
         RemoveListItem.Reset();
         GenListApply.Reset();
+#if defined(WITH_V8_BYTECODE)
+        GenEmptyCode.Reset();
+#endif
     }
 
 #if !defined(ENGINE_INDEPENDENT_JSENV)
@@ -3006,7 +3018,7 @@ FJsEnvImpl::FTemplateInfo* FJsEnvImpl::GetTemplateInfoOfType(UStruct* InStruct, 
                 Template->SetClassName(
                     v8::String::NewFromUtf8(Isolate, TCHAR_TO_UTF8(*InStruct->GetPathName()), v8::NewStringType::kNormal)
                         .ToLocalChecked());
-#elif !UE_SHIPPING
+#elif !defined(UE_SHIPPING)
                 Template->SetClassName(
                     v8::String::NewFromUtf8(Isolate, TCHAR_TO_UTF8(*InStruct->GetName()), v8::NewStringType::kNormal)
                         .ToLocalChecked());
@@ -3038,7 +3050,7 @@ FJsEnvImpl::FTemplateInfo* FJsEnvImpl::GetTemplateInfoOfType(UStruct* InStruct, 
                 Template->SetClassName(
                     v8::String::NewFromUtf8(Isolate, TCHAR_TO_UTF8(*InStruct->GetPathName()), v8::NewStringType::kNormal)
                         .ToLocalChecked());
-#elif !UE_SHIPPING
+#elif !defined(UE_SHIPPING)
                 Template->SetClassName(
                     v8::String::NewFromUtf8(Isolate, TCHAR_TO_UTF8(*InStruct->GetName()), v8::NewStringType::kNormal)
                         .ToLocalChecked());
@@ -3413,7 +3425,7 @@ void FJsEnvImpl::NewContainer(const v8::FunctionCallbackInfo<v8::Value>& Info)
     }
 }
 
-void FJsEnvImpl::Start(const FString& ModuleNameOrScript, const TArray<TPair<FString, UObject*>>& Arguments, bool IsScript)
+void FJsEnvImpl::Start(const FString& ModuleNameOrScript, const TArray<TPair<FString, UObject*>>& Arguments)
 {
 #ifdef SINGLE_THREAD_VERIFY
     ensureMsgf(BoundThreadId == FPlatformTLS::GetCurrentThreadId(), TEXT("Access by illegal thread!"));
@@ -3471,38 +3483,14 @@ void FJsEnvImpl::Start(const FString& ModuleNameOrScript, const TArray<TPair<FSt
         (void) (ArgvAdd->Call(Context, Argv, 2, Args));
     }
 
-    if (IsScript)
+    v8::TryCatch TryCatch(Isolate);
+    v8::Local<v8::Value> Args[] = {FV8Utils::ToV8String(Isolate, ModuleNameOrScript)};
+    __USE(Require.Get(Isolate)->Call(Context, v8::Undefined(Isolate), 1, Args));
+    if (TryCatch.HasCaught())
     {
-#if V8_MAJOR_VERSION > 8
-        v8::ScriptOrigin Origin(Isolate, FV8Utils::ToV8String(Isolate, "chunk"));
-#else
-        v8::ScriptOrigin Origin(FV8Utils::ToV8String(Isolate, "chunk"));
-#endif
-        v8::Local<v8::String> Source = FV8Utils::ToV8String(Isolate, ModuleNameOrScript);
-        v8::TryCatch TryCatch(Isolate);
+        Logger->Error(FV8Utils::TryCatchToString(Isolate, &TryCatch));
+    }
 
-        auto CompiledScript = v8::Script::Compile(Context, Source, &Origin);
-        if (CompiledScript.IsEmpty())
-        {
-            Logger->Error(FV8Utils::TryCatchToString(Isolate, &TryCatch));
-            return;
-        }
-        (void) (CompiledScript.ToLocalChecked()->Run(Context));
-        if (TryCatch.HasCaught())
-        {
-            Logger->Error(FV8Utils::TryCatchToString(Isolate, &TryCatch));
-        }
-    }
-    else
-    {
-        v8::TryCatch TryCatch(Isolate);
-        v8::Local<v8::Value> Args[] = {FV8Utils::ToV8String(Isolate, ModuleNameOrScript)};
-        __USE(Require.Get(Isolate)->Call(Context, v8::Undefined(Isolate), 1, Args));
-        if (TryCatch.HasCaught())
-        {
-            Logger->Error(FV8Utils::TryCatchToString(Isolate, &TryCatch));
-        }
-    }
     Started = true;
 }
 
@@ -3539,8 +3527,11 @@ std::unordered_multimap<int, FJsEnvImpl::FModuleInfo*>::iterator FJsEnvImpl::Fin
     return HashToModuleInfo.end();
 }
 
-v8::MaybeLocal<v8::Module> FJsEnvImpl::ResolveModuleCallback(
-    v8::Local<v8::Context> Context, v8::Local<v8::String> Specifier, v8::Local<v8::Module> Referrer)
+v8::MaybeLocal<v8::Module> FJsEnvImpl::ResolveModuleCallback(v8::Local<v8::Context> Context, v8::Local<v8::String> Specifier,
+#if V8_MAJOR_VERSION >= 9
+    v8::Local<v8::FixedArray> ImportAttributes,    // not implement yet
+#endif
+    v8::Local<v8::Module> Referrer)
 {
     auto Self = static_cast<FJsEnvImpl*>(FV8Utils::IsolateData<IObjectMapper>(Context->GetIsolate()));
     const auto ItModuleInfo = Self->FindModuleInfo(Referrer);
@@ -3650,8 +3641,39 @@ v8::MaybeLocal<v8::Module> FJsEnvImpl::FetchESModuleTree(v8::Local<v8::Context> 
         return v8::MaybeLocal<v8::Module>();
     }
 
-    FString Script;
-    FFileHelper::BufferToString(Script, Data.GetData(), Data.Num());
+    v8::Local<v8::String> Source;
+
+    v8::ScriptCompiler::CachedData* CachedCode = nullptr;
+    v8::ScriptCompiler::CompileOptions Options = v8::ScriptCompiler::CompileOptions::kNoCompileOptions;
+#if defined(WITH_V8_BYTECODE)
+    if (FileName.EndsWith(TEXT(".mbc")))
+    {
+        FCodeCacheHeader* CodeCacheHeader = (FCodeCacheHeader*) Data.GetData();
+        if (CodeCacheHeader->FlagHash != Expect_FlagHash)
+        {
+            UE_LOG(Puerts, Warning, TEXT("FlagHash not match expect %u, but got %u"), Expect_FlagHash, CodeCacheHeader->FlagHash);
+            CodeCacheHeader->FlagHash = Expect_FlagHash;
+        }
+        static constexpr uint32_t kModuleFlagMask = (1 << 31);
+        uint32_t Len = CodeCacheHeader->SourceHash & ~kModuleFlagMask;
+        v8::Local<v8::Value> Args[] = {v8::Integer::New(Isolate, Len)};
+        v8::Local<v8::Value> Ret;
+        if (!GenEmptyCode.Get(Isolate)->Call(Context, v8::Undefined(Isolate), 1, Args).ToLocal(&Ret) || !Ret->IsString())
+        {
+            FV8Utils::ThrowException(MainIsolate, FString::Printf(TEXT("generate code for bytecode [%s] fail!"), *FileName));
+            return v8::MaybeLocal<v8::Module>();
+        }
+        CachedCode = new v8::ScriptCompiler::CachedData(Data.GetData(), Data.Num());    // will delete by ~Source
+        Options = v8::ScriptCompiler::CompileOptions::kConsumeCodeCache;
+        Source = Ret.As<v8::String>();
+    }
+    else
+#endif
+    {
+        FString Script;
+        FFileHelper::BufferToString(Script, Data.GetData(), Data.Num());
+        Source = FV8Utils::ToV8String(Isolate, Script);
+    }
 
 #if V8_MAJOR_VERSION > 8
     v8::ScriptOrigin Origin(
@@ -3661,10 +3683,10 @@ v8::MaybeLocal<v8::Module> FJsEnvImpl::FetchESModuleTree(v8::Local<v8::Context> 
         v8::Local<v8::Boolean>(), v8::Local<v8::Integer>(), v8::Local<v8::Value>(), v8::Local<v8::Boolean>(),
         v8::Local<v8::Boolean>(), v8::True(Isolate));
 #endif
-    v8::ScriptCompiler::Source Source(FV8Utils::ToV8String(Isolate, Script), Origin);
+    v8::ScriptCompiler::Source ScriptSource(Source, Origin, CachedCode);
 
     v8::Local<v8::Module> Module;
-    if (!v8::ScriptCompiler::CompileModule(Isolate, &Source).ToLocal(&Module))
+    if (!v8::ScriptCompiler::CompileModule(Isolate, &ScriptSource, Options).ToLocal(&Module))
     {
         return v8::MaybeLocal<v8::Module>();
     }
@@ -3676,10 +3698,17 @@ v8::MaybeLocal<v8::Module> FJsEnvImpl::FetchESModuleTree(v8::Local<v8::Context> 
 
     auto DirName = FPaths::GetPath(FileName);
 
+#if V8_MAJOR_VERSION >= 9
+    v8::Local<v8::FixedArray> module_requests = Module->GetModuleRequests();
+    for (int i = 0, Length = module_requests->Length(); i < Length; ++i)
+    {
+        v8::Local<v8::ModuleRequest> module_request = module_requests->Get(Context, i).As<v8::ModuleRequest>();
+        auto RefModuleName = FV8Utils::ToFString(Isolate, module_request->GetSpecifier());
+#else
     for (int i = 0, Length = Module->GetModuleRequestsLength(); i < Length; ++i)
     {
         auto RefModuleName = FV8Utils::ToFString(Isolate, Module->GetModuleRequest(i));
-
+#endif
         FString OutPath;
         FString OutDebugPath;
         if (ModuleLoader->Search(DirName, RefModuleName, OutPath, OutDebugPath))
@@ -3825,10 +3854,6 @@ void FJsEnvImpl::EvalScript(const v8::FunctionCallbackInfo<v8::Value>& Info)
     v8::Local<v8::Context> Context = Isolate->GetCurrentContext();
     v8::Context::Scope ContextScope(Context);
 
-    CHECK_V8_ARGS(EArgString, EArgString);
-
-    v8::Local<v8::String> Source = Info[0]->ToString(Context).ToLocalChecked();
-
 #ifndef WITH_QUICKJS
     bool IsESM = Info[2]->BooleanValue(Isolate);
 
@@ -3885,7 +3910,47 @@ void FJsEnvImpl::EvalScript(const v8::FunctionCallbackInfo<v8::Value>& Info)
 #else
     v8::ScriptOrigin Origin(Name);
 #endif
+    v8::Local<v8::String> Source = Info[0]->ToString(Context).ToLocalChecked();
+
+#if defined(WITH_V8_BYTECODE)
+    v8::ScriptCompiler::CachedData* CachedCode = nullptr;
+    uint8_t* Cache = nullptr;
+    v8::ScriptCompiler::CompileOptions Options = v8::ScriptCompiler::CompileOptions::kNoCompileOptions;
+    if (Info.Length() > 4)
+    {
+        if (Info[4]->IsArrayBuffer())
+        {
+            auto AB = Info[4].As<v8::ArrayBuffer>();
+            auto Length = AB->ByteLength();
+            Cache = new uint8_t[Length];
+            memcpy(Cache, DataTransfer::GetArrayBufferData(AB), Length);
+            CachedCode = new v8::ScriptCompiler::CachedData(Cache, Length);    // will delete by ~Source
+            Options = v8::ScriptCompiler::CompileOptions::kConsumeCodeCache;
+            FCodeCacheHeader* CodeCacheHeader = (FCodeCacheHeader*) CachedCode->data;
+            if (CodeCacheHeader->FlagHash != Expect_FlagHash)
+            {
+                UE_LOG(
+                    Puerts, Warning, TEXT("FlagHash not match expect %u, but got %u"), Expect_FlagHash, CodeCacheHeader->FlagHash);
+                CodeCacheHeader->FlagHash = Expect_FlagHash;
+            }
+        }
+    }
+
+    v8::ScriptCompiler::Source ScriptSource(Source, Origin, CachedCode);
+    auto Script = v8::ScriptCompiler::Compile(Context, &ScriptSource, Options);
+    if (CachedCode)
+    {
+        delete Cache;
+        if (CachedCode->rejected)
+        {
+            FV8Utils::ThrowException(Isolate, TEXT("invalid bytecode"));
+            return;
+        }
+    }
+#else
     auto Script = v8::Script::Compile(Context, Source, &Origin);
+#endif
+
     if (Script.IsEmpty())
     {
         return;
@@ -3971,8 +4036,19 @@ void FJsEnvImpl::LoadModule(const v8::FunctionCallbackInfo<v8::Value>& Info)
         FV8Utils::ThrowException(Isolate, "can not load module");
         return;
     }
-
-    Info.GetReturnValue().Set(FV8Utils::ToV8StringFromFileContent(Isolate, Data));
+#if defined(WITH_V8_BYTECODE)
+    if (Path.EndsWith(TEXT(".cbc")) || Path.EndsWith(TEXT(".mbc")))
+    {
+        v8::Local<v8::ArrayBuffer> Ab = v8::ArrayBuffer::New(Info.GetIsolate(), Data.Num());
+        void* Buff = DataTransfer::GetArrayBufferData(Ab);
+        ::memcpy(Buff, Data.GetData(), Data.Num());
+        Info.GetReturnValue().Set(Ab);
+    }
+    else
+#endif
+    {
+        Info.GetReturnValue().Set(FV8Utils::ToV8StringFromFileContent(Isolate, Data));
+    }
 }
 
 void FJsEnvImpl::SetTimeout(const v8::FunctionCallbackInfo<v8::Value>& Info)
