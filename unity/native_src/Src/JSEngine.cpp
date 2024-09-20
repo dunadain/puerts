@@ -100,18 +100,6 @@ namespace PUERTS_NAMESPACE
         GeneralDestructor = nullptr;
         FBackendEnv::GlobalPrepare();
 
-        std::string Flags = "--no-harmony-top-level-await --stack_size=856";
-#if PUERTS_DEBUG
-        Flags += " --expose-gc";
-#if PLATFORM_MAC
-        Flags += " --jitless --no-expose-wasm";
-#endif
-#endif
-#if PLATFORM_IOS
-        Flags += " --jitless --no-expose-wasm";
-#endif
-        v8::V8::SetFlagsFromString(Flags.c_str(), static_cast<int>(Flags.size()));
-
         BackendEnv.Initialize(external_quickjs_runtime, external_quickjs_context);
         MainIsolate = BackendEnv.MainIsolate;
 
@@ -234,6 +222,9 @@ namespace PUERTS_NAMESPACE
             bool success = Eval(ExecuteModuleJSCode, "__puer_execute__.mjs");
             if (!success) return nullptr;
             
+#ifdef THREAD_SAFE
+            v8::Locker Locker(MainIsolate);
+#endif
             v8::Isolate::Scope IsolateScope(MainIsolate);
             v8::HandleScope HandleScope(MainIsolate);
             v8::Local<v8::Context> Context = ResultInfo.Context.Get(MainIsolate);
@@ -736,6 +727,9 @@ namespace PUERTS_NAMESPACE
     
     bool JSEngine::ClearModuleCache(const char* Path)
     {
+#ifdef THREAD_SAFE
+        v8::Locker Locker(MainIsolate);
+#endif
         v8::Isolate::Scope IsolateScope(MainIsolate);
         v8::HandleScope HandleScope(MainIsolate);
         v8::Local<v8::Context> Context = ResultInfo.Context.Get(MainIsolate);

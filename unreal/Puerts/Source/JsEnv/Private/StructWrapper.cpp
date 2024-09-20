@@ -93,13 +93,18 @@ void FStructWrapper::InitTemplateProperties(
                 v8::PropertyAttribute PropertyAttribute = v8::DontDelete;
                 if (!PropertyInfo->Setter)
                     PropertyAttribute = (v8::PropertyAttribute)(PropertyAttribute | v8::ReadOnly);
-                auto Data = PropertyInfo->Data ? static_cast<v8::Local<v8::Value>>(v8::External::New(Isolate, PropertyInfo->Data))
-                                               : v8::Local<v8::Value>();
+                auto GetterData = PropertyInfo->GetterData
+                                      ? static_cast<v8::Local<v8::Value>>(v8::External::New(Isolate, PropertyInfo->GetterData))
+                                      : v8::Local<v8::Value>();
+
+                auto SetterData = PropertyInfo->SetterData
+                                      ? static_cast<v8::Local<v8::Value>>(v8::External::New(Isolate, PropertyInfo->SetterData))
+                                      : v8::Local<v8::Value>();
 
                 Template->PrototypeTemplate()->SetAccessorProperty(FV8Utils::InternalString(Isolate, PropertyInfo->Name),
-                    PropertyInfo->Getter ? v8::FunctionTemplate::New(Isolate, PropertyInfo->Getter, Data)
+                    PropertyInfo->Getter ? v8::FunctionTemplate::New(Isolate, PropertyInfo->Getter, GetterData)
                                          : v8::Local<v8::FunctionTemplate>(),
-                    PropertyInfo->Setter ? v8::FunctionTemplate::New(Isolate, PropertyInfo->Setter, Data)
+                    PropertyInfo->Setter ? v8::FunctionTemplate::New(Isolate, PropertyInfo->Setter, SetterData)
                                          : v8::Local<v8::FunctionTemplate>(),
                     PropertyAttribute);
             }
@@ -114,13 +119,18 @@ void FStructWrapper::InitTemplateProperties(
                 v8::PropertyAttribute PropertyAttribute = v8::DontDelete;
                 if (!PropertyInfo->Setter)
                     PropertyAttribute = (v8::PropertyAttribute)(PropertyAttribute | v8::ReadOnly);
-                auto Data = PropertyInfo->Data ? static_cast<v8::Local<v8::Value>>(v8::External::New(Isolate, PropertyInfo->Data))
-                                               : v8::Local<v8::Value>();
+                auto GetterData = PropertyInfo->GetterData
+                                      ? static_cast<v8::Local<v8::Value>>(v8::External::New(Isolate, PropertyInfo->GetterData))
+                                      : v8::Local<v8::Value>();
+
+                auto SetterData = PropertyInfo->SetterData
+                                      ? static_cast<v8::Local<v8::Value>>(v8::External::New(Isolate, PropertyInfo->SetterData))
+                                      : v8::Local<v8::Value>();
 
                 Template->SetAccessorProperty(FV8Utils::InternalString(Isolate, PropertyInfo->Name),
-                    PropertyInfo->Getter ? v8::FunctionTemplate::New(Isolate, PropertyInfo->Getter, Data)
+                    PropertyInfo->Getter ? v8::FunctionTemplate::New(Isolate, PropertyInfo->Getter, GetterData)
                                          : v8::Local<v8::FunctionTemplate>(),
-                    PropertyInfo->Setter ? v8::FunctionTemplate::New(Isolate, PropertyInfo->Setter, Data)
+                    PropertyInfo->Setter ? v8::FunctionTemplate::New(Isolate, PropertyInfo->Setter, SetterData)
                                          : v8::Local<v8::FunctionTemplate>(),
                     PropertyAttribute);
                 ++PropertyInfo;
@@ -164,7 +174,7 @@ v8::Local<v8::FunctionTemplate> FStructWrapper::ToFunctionTemplate(v8::Isolate* 
     auto Result = CachedFunctionTemplate.Get(Isolate);
 #else
     auto Result = v8::FunctionTemplate::New(
-        Isolate, Construtor, v8::External::New(Isolate, this));    //和class的区别就这里传的函数不一样，后续尽量重用
+        Isolate, Construtor, v8::External::New(Isolate, this));    // 和class的区别就这里传的函数不一样，后续尽量重用
     Result->InstanceTemplate()->SetInternalFieldCount(4);
 #endif
 
@@ -248,21 +258,48 @@ v8::Local<v8::FunctionTemplate> FStructWrapper::ToFunctionTemplate(v8::Isolate* 
                 continue;
             }
 
-            auto Key = FV8Utils::InternalString(Isolate, Function->GetName());
+            FString FuncName = Function->GetName();
+            auto Key = FV8Utils::InternalString(Isolate, FuncName);
+#ifdef PUERTS_WITH_EDITOR_SUFFIX
+            // 这里同时绑定带Suffix和不带Suffix的后缀是为了兼容现有的一些js写的代码(PuertsEditor)
+            v8::Local<v8::String> AdditionalKey{};
+            if (puerts::IsEditorOnlyUFunction(Function))
+            {
+                FString SuffixFuncName = FuncName + EditorOnlyPropertySuffix.GetData();
+                AdditionalKey = FV8Utils::InternalString(Isolate, SuffixFuncName);
+            }
+#endif
+            // 这里同时绑定带Suffix和不带Suffix的后缀是为了兼容现有的一些js写的代码(PuertsEditor)
 
             if (Function->HasAnyFunctionFlags(FUNC_Static))
             {
                 auto FunctionTranslator = GetFunctionTranslator(Function);
                 AddedFunctions.Add(Function->GetFName());
                 if (!IsReuseTemplate)
+                {
                     Result->Set(Key, FunctionTranslator->ToFunctionTemplate(Isolate));
+#ifdef PUERTS_WITH_EDITOR_SUFFIX
+                    if (!AdditionalKey.IsEmpty())
+                    {
+                        Result->Set(AdditionalKey, FunctionTranslator->ToFunctionTemplate(Isolate));
+                    }
+#endif
+                }
             }
             else
             {
                 auto FunctionTranslator = GetMethodTranslator(Function, false);
                 AddedMethods.Add(Function->GetFName());
                 if (!IsReuseTemplate)
+                {
                     Result->PrototypeTemplate()->Set(Key, FunctionTranslator->ToFunctionTemplate(Isolate));
+#ifdef PUERTS_WITH_EDITOR_SUFFIX
+                    if (!AdditionalKey.IsEmpty())
+                    {
+                        Result->PrototypeTemplate()->Set(AdditionalKey, FunctionTranslator->ToFunctionTemplate(Isolate));
+                    }
+#endif
+                }
             }
         }
 

@@ -14,16 +14,6 @@ if (!fs.existsSync(__dirname + '/../node_modules')) {
   executeCommand();
 }
 
-function executeCommand() {
-  const command = `node --loader ts-node/esm ${__dirname}/cmd.mts ${process.argv.slice(2).join(' ')}`;
-  console.log(command);
-
-  const p = cp.exec(command);
-
-  p.stdout.on('data', console.log);
-  p.stderr.on('data', console.error);
-
-  p.on('exit', (code) => {
-    process.exit(code);
-  });
-}
+async function executeCommand () {
+    await import('./cmd.mjs');
+};

@@ -304,6 +304,9 @@ static v8::Value* GetModuleExecutor(v8::Context* env)
 static void* GetJSObjectValue(const PersistentObjectInfo* objectInfo, const char* key, const void* Typeid)
 {
     auto Isolate = objectInfo->EnvInfo->Isolate;
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
     v8::Isolate::Scope Isolatescope(Isolate);
     v8::HandleScope HandleScope(Isolate);
     auto LocalContext = objectInfo->EnvInfo->Context.Get(Isolate);
@@ -708,7 +711,7 @@ struct JSEnv
         std::string Flags = "--no-harmony-top-level-await --stack_size=856";
 #endif
         Flags += " --expose-gc";
-#if PLATFORM_IOS
+#if defined(PLATFORM_IOS) || defined(PLATFORM_OHOS)
         Flags += " --jitless --no-expose-wasm";
 #endif
         v8::V8::SetFlagsFromString(Flags.c_str(), static_cast<int>(Flags.size()));
@@ -718,6 +721,9 @@ struct JSEnv
 
         auto Isolate = MainIsolate;
         
+#ifdef THREAD_SAFE
+        v8::Locker Locker(Isolate);
+#endif
         v8::Isolate::Scope Isolatescope(Isolate);
         v8::HandleScope HandleScope(Isolate);
 
@@ -833,16 +839,19 @@ V8_EXPORT v8::Isolate* GetIsolate(puerts::JSEnv* jsEnv)
     return jsEnv->MainIsolate;
 }
 
-V8_EXPORT pesapi_env_holder GetPesapiEnvHolder(puerts::JSEnv* jsEnv)
+V8_EXPORT pesapi_env_ref GetPesapiEnvHolder(puerts::JSEnv* jsEnv)
 {
     v8::Isolate* Isolate = jsEnv->MainIsolate;
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
     v8::Isolate::Scope IsolateScope(Isolate);
     v8::HandleScope HandleScope(Isolate);
     v8::Local<v8::Context> Context = jsEnv->MainContext.Get(Isolate);
     v8::Context::Scope ContextScope(Context);
     
     auto env = reinterpret_cast<pesapi_env>(*Context);
-    return pesapi_hold_env(env);
+    return pesapi_create_env_ref(env);
 }
 
 V8_EXPORT puerts::JsClassInfo* CreateCSharpTypeInfo(const char* name, const void* type_id, const void* super_type_id, void* klass, bool isValueType, bool isDelegate, const char* delegateSignature)
@@ -1161,6 +1170,9 @@ V8_EXPORT void SetObjectToGlobal(puerts::JSEnv* jsEnv, const char* key, void *ob
     if (obj)
     {
         v8::Isolate* Isolate = jsEnv->MainIsolate;
+#ifdef THREAD_SAFE
+        v8::Locker Locker(Isolate);
+#endif
         v8::Isolate::Scope IsolateScope(Isolate);
         v8::HandleScope HandleScope(Isolate);
         v8::Local<v8::Context> Context = jsEnv->MainContext.Get(Isolate);
@@ -1174,6 +1186,9 @@ V8_EXPORT void SetObjectToGlobal(puerts::JSEnv* jsEnv, const char* key, void *ob
 V8_EXPORT void ReleasePendingJsObjects(puerts::JSEnv* jsEnv)
 {
     v8::Isolate* Isolate = jsEnv->MainIsolate;
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
     v8::Isolate::Scope IsolateScope(Isolate);
     v8::HandleScope HandleScope(Isolate);
     

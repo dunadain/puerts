@@ -86,6 +86,10 @@ PRAGMA_ENABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #include "PuertsWasm/WasmJsFunctionParams.h"
 #endif
 
+#if defined(WITH_WEBSOCKET)
+void InitWebsocketPPWrap(v8::Local<v8::Context> Context);
+#endif
+
 namespace PUERTS_NAMESPACE
 {
 #if !defined(WITH_QUICKJS)
@@ -327,6 +331,9 @@ struct FCodeCacheHeader
     uint32_t VersionHash;
     uint32_t SourceHash;
     uint32_t FlagHash;
+#if V8_MAJOR_VERSION >= 11
+    uint32_t ReadOnlySnapshotChecksum;
+#endif
     uint32_t PayloadLength;
     uint32_t Checksum;
 };
@@ -659,9 +666,17 @@ FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::sha
     auto CachedCode = v8::ScriptCompiler::CreateCodeCache(Script->GetUnboundScript());
     const FCodeCacheHeader* CodeCacheHeader = (const FCodeCacheHeader*) CachedCode->data;
     Expect_FlagHash = CodeCacheHeader->FlagHash;    // get FlagHash
+#if V8_MAJOR_VERSION >= 11
+    Expect_ReadOnlySnapshotChecksum = CodeCacheHeader->ReadOnlySnapshotChecksum;
+#endif
 #if !WITH_EDITOR
     delete CachedCode;    //编辑器下是v8.dll分配的，ue里的delete被重载了，这delete会有问题
 #endif
+#endif
+
+#if defined(WITH_WEBSOCKET)
+    InitWebsocketPPWrap(Context);
+    ExecuteModule("puerts/websocketpp.js");
 #endif
 }
 
@@ -1066,19 +1081,15 @@ void FJsEnvImpl::NewObjectByClass(const v8::FunctionCallbackInfo<v8::Value>& Inf
         UObject* Object = NewObject<UObject>(Outer, Class, Name, ObjectFlags);
 
         auto Result = FV8Utils::IsolateData<IObjectMapper>(Isolate)->FindOrAdd(Isolate, Context, Object->GetClass(), Object);
+#if !PUERTS_KEEP_UOBJECT_REFERENCE
         bool NeedJsTakeRef = true;
         if (Info.Length() > 4 && !Info[4]->IsNullOrUndefined())
         {
-            if (Info[4]->BooleanValue(Isolate))
-            {
-            }
-            else
+            if (!Info[4]->BooleanValue(Isolate))
             {
                 NeedJsTakeRef = false;
             }
         }
-#if PUERTS_KEEP_UOBJECT_REFERENCE
-#else
         if (NeedJsTakeRef)
         {
             bool Existed;
@@ -1775,7 +1786,7 @@ v8::Local<v8::Value> FJsEnvImpl::FindOrAdd(
 {
     if (!UEObject)
     {
-        return v8::Undefined(Isolate);
+        return v8::Null(Isolate);
     }
 
     auto PersistentValuePtr = ObjectMap.Find(UEObject);
@@ -1807,7 +1818,10 @@ v8::Local<v8::Value> FJsEnvImpl::FindOrAdd(v8::Isolate* Isolate, v8::Local<v8::C
 v8::Local<v8::Value> FJsEnvImpl::FindOrAddStruct(
     v8::Isolate* Isolate, v8::Local<v8::Context>& Context, UScriptStruct* ScriptStruct, void* Ptr, bool PassByPointer)
 {
-    check(Ptr);    // must not null
+    if (!Ptr)
+    {
+        return v8::Null(Isolate);
+    }
 
     auto HeaderPtr = StructCache.Find(Ptr);
     if (HeaderPtr)
@@ -2108,6 +2122,10 @@ void FJsEnvImpl::NotifyUObjectDeleted(const class UObjectBase* ObjectBase, int32
     {
         for (auto Callback : *CallbacksPtr)
         {
+            if (Callback.IsValid())
+            {
+                Callback.Get()->JsFunction.Reset();
+            }
             SysObjectRetainer.Release(Callback.Get());
         }
         AutoReleaseCallbacksMap.Remove((UObject*) ObjectBase);
@@ -3582,7 +3600,12 @@ v8::MaybeLocal<v8::Module> FJsEnvImpl::FetchCJSModuleAsESModule(v8::Local<v8::Co
     }
 
     v8::Local<v8::Module> SyntheticModule =
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+        v8::Module_CreateSyntheticModule_Without_Stl(Isolate, FV8Utils::ToV8String(Isolate, ModuleName), ExportNames.data(),
+            ExportNames.size(),
+#else
         v8::Module::CreateSyntheticModule(Isolate, FV8Utils::ToV8String(Isolate, ModuleName), ExportNames,
+#endif
             [](v8::Local<v8::Context> ContextInner, v8::Local<v8::Module> Module) -> v8::MaybeLocal<v8::Value>
             {
                 const auto IsolateInner = ContextInner->GetIsolate();
@@ -3654,6 +3677,14 @@ v8::MaybeLocal<v8::Module> FJsEnvImpl::FetchESModuleTree(v8::Local<v8::Context> 
             UE_LOG(Puerts, Warning, TEXT("FlagHash not match expect %u, but got %u"), Expect_FlagHash, CodeCacheHeader->FlagHash);
             CodeCacheHeader->FlagHash = Expect_FlagHash;
         }
+#if V8_MAJOR_VERSION >= 11
+        if (CodeCacheHeader->ReadOnlySnapshotChecksum != Expect_ReadOnlySnapshotChecksum)
+        {
+            UE_LOG(Puerts, Warning, TEXT("ReadOnlySnapshotChecksum not match expect %u, but got %u"),
+                Expect_ReadOnlySnapshotChecksum, CodeCacheHeader->ReadOnlySnapshotChecksum);
+            CodeCacheHeader->ReadOnlySnapshotChecksum = Expect_ReadOnlySnapshotChecksum;
+        }
+#endif
         static constexpr uint32_t kModuleFlagMask = (1 << 31);
         uint32_t Len = CodeCacheHeader->SourceHash & ~kModuleFlagMask;
         v8::Local<v8::Value> Args[] = {v8::Integer::New(Isolate, Len)};

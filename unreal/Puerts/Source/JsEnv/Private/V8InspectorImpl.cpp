@@ -6,6 +6,8 @@
  * which is part of this source code package.
  */
 
+// TODO: 静态库11.8 window调试崩溃
+
 #if defined(UE_GAME) || defined(UE_EDITOR) || defined(UE_SERVER) || defined(USING_IN_UNREAL_ENGINE)
 #define USING_UE 1
 #else
@@ -58,8 +60,7 @@ namespace PUERTS_NAMESPACE
 class V8InspectorChannelImpl : public v8_inspector::V8Inspector::Channel, public V8InspectorChannel
 {
 public:
-    V8InspectorChannelImpl(
-        v8::Isolate* InIsolate, const std::unique_ptr<v8_inspector::V8Inspector>& InV8Inspector, const int32_t InCxtGroupID);
+    V8InspectorChannelImpl(v8::Isolate* InIsolate, v8_inspector::V8Inspector* InV8Inspector, const int32_t InCxtGroupID);
 
     void DispatchProtocolMessage(const std::string& Message) override;
 
@@ -89,7 +90,7 @@ private:
 };
 
 V8InspectorChannelImpl::V8InspectorChannelImpl(
-    v8::Isolate* InIsolate, const std::unique_ptr<v8_inspector::V8Inspector>& InV8Inspector, const int32_t InCxtGroupID)
+    v8::Isolate* InIsolate, v8_inspector::V8Inspector* InV8Inspector, const int32_t InCxtGroupID)
 {
     v8_inspector::StringView DummyState;
     Isolate = InIsolate;
@@ -221,7 +222,11 @@ private:
 
     int32_t Port;
 
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    v8_inspector::V8Inspector* V8Inspector;
+#else
     std::unique_ptr<v8_inspector::V8Inspector> V8Inspector;
+#endif
 
     int32_t CtxGroupID;
 
@@ -290,7 +295,11 @@ V8InspectorClientImpl::V8InspectorClientImpl(int32_t InPort, v8::Local<v8::Conte
     CtxGroupID = CurrentCtxGroupID++;
     const uint8_t CtxNameConst[] = "V8InspectorContext";
     v8_inspector::StringView CtxName(CtxNameConst, sizeof(CtxNameConst) - 1);
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    V8Inspector = V8Inspector_Create_Without_Stl(Isolate, this);
+#else
     V8Inspector = v8_inspector::V8Inspector::create(Isolate, this);
+#endif
     V8Inspector->contextCreated(v8_inspector::V8ContextInfo(InContext, CtxGroupID, CtxName));
 
     if (Port < 0)
@@ -357,12 +366,19 @@ V8InspectorClientImpl::V8InspectorClientImpl(int32_t InPort, v8::Local<v8::Conte
 
 V8InspectorChannel* V8InspectorClientImpl::CreateV8InspectorChannel()
 {
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
     return new V8InspectorChannelImpl(Isolate, V8Inspector, CtxGroupID);
+#else
+    return new V8InspectorChannelImpl(Isolate, V8Inspector.get(), CtxGroupID);
+#endif
 }
 
 V8InspectorClientImpl::~V8InspectorClientImpl()
 {
     Close();
+#if defined(V8_HAS_WRAP_API_WITHOUT_STL)
+    v8_inspector::V8Inspector_Destroy_Without_Stl(V8Inspector);
+#endif
 }
 
 void V8InspectorClientImpl::Close()
@@ -478,7 +494,7 @@ void V8InspectorClientImpl::OnHTTP(wspp_connection_hdl Handle)
 
 void V8InspectorClientImpl::OnOpen(wspp_connection_hdl Handle)
 {
-    V8InspectorChannelImpl* channel = new V8InspectorChannelImpl(Isolate, V8Inspector, CtxGroupID);
+    V8InspectorChannelImpl* channel = static_cast<V8InspectorChannelImpl*>(CreateV8InspectorChannel());
     V8InspectorChannels[Handle.lock().get()] = channel;
     channel->OnMessage(std::bind(&V8InspectorClientImpl::OnSendMessage, this, Handle, std::placeholders::_1));
 #if USING_UE
@@ -539,8 +555,12 @@ void V8InspectorClientImpl::OnClose(wspp_connection_hdl Handle)
 
 void V8InspectorClientImpl::OnFail(wspp_connection_hdl Handle)
 {
+    wspp_server::connection_ptr con = Server.get_con_from_hdl(Handle);
+    std::string message = con->get_ec().message();
 #if USING_UE
-    UE_LOG(LogV8Inspector, Error, TEXT("Connection OnFail"));
+    UE_LOG(LogV8Inspector, Error, TEXT("Connection OnFail %s"), UTF8_TO_TCHAR(message.c_str()));
+#else
+    puerts::PLog(puerts::Error, "Connection OnFail %s", message.c_str());
 #endif
 }
 

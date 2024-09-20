@@ -20,15 +20,19 @@
 
 #include <string>
 
+#include "NamespaceDef.h"
+
 PRAGMA_DISABLE_UNDEFINED_IDENTIFIER_WARNINGS
 #pragma warning(push, 0)
 #include "v8.h"
 #pragma warning(pop)
 PRAGMA_ENABLE_UNDEFINED_IDENTIFIER_WARNINGS
 
-#include "NamespaceDef.h"
-
 #include "TypeInfo.hpp"
+
+#if USING_IN_UNREAL_ENGINE
+static const FAnsiStringView EditorOnlyPropertySuffix = "_EditorOnly";
+#endif
 
 namespace PUERTS_NAMESPACE
 {
@@ -46,7 +50,8 @@ struct JSENV_API JSPropertyInfo
     const char* Name;
     v8::FunctionCallback Getter;
     v8::FunctionCallback Setter;
-    void* Data = nullptr;
+    void* GetterData = nullptr;
+    void* SetterData = nullptr;
 };
 
 typedef void (*FinalizeFunc)(void* Ptr);
@@ -101,6 +106,9 @@ AddonRegisterFunc FindAddonRegisterFunc(const std::string& Name);
 void RegisterAddon(const char* Name, AddonRegisterFunc RegisterFunc);
 
 JSENV_API const JSClassDefinition* FindClassByType(UStruct* Type);
+
+JSENV_API bool IsEditorOnlyUFunction(const UFunction* Func);
+
 #endif
 
 }    // namespace PUERTS_NAMESPACE
