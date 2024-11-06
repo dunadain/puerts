@@ -48,6 +48,11 @@ if (UnityEngine_Debug || !global.console) {
         if (console_org) console_org.log.apply(null, Array.prototype.slice.call(arguments));
         UnityEngine_Debug.Log(toString(arguments));
     }
+
+    console.logWithColor = function (msg, color) {
+        if (console_org) console_org.log.call(null, `%c${msg}`, `color: ${color}`);
+        UnityEngine_Debug.Log(`<color=${color}>${msg}</color>`);
+    }
     
     console.info = function() {
         if (console_org) console_org.info.apply(null, Array.prototype.slice.call(arguments));
