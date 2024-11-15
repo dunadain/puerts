@@ -43,13 +43,13 @@
 #define MakeVariable(M) MakeProperty(M)
 #define MakeVariableByGetterSetter(M) MakePropertyByGetterSetter(M)
 #define MakeReadonlyVariable(M) MakeReadonlyProperty(M)
-#define MakeFunction(M, ...)                                                                                                    \
-    [](::PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API::CallbackInfoType info)                                                     \
-    {                                                                                                                           \
-        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, decltype(M), M>::callWithDefaultValues( \
-            info, ##__VA_ARGS__);                                                                                               \
-    },                                                                                                                          \
-        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, decltype(M), M>::info(                  \
+#define MakeFunction(M, ...)                                                                                          \
+    [](::PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API::CallbackInfoType info)                                           \
+    {                                                                                                                 \
+        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, decltype(M), M,               \
+            false>::callWithDefaultValues(info, ##__VA_ARGS__);                                                       \
+    },                                                                                                                \
+        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, decltype(M), M, false>::info( \
             PUERTS_NAMESPACE::Count(__VA_ARGS__))
 #define MakeExtension(M, ...)                                                                                           \
     [](::PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API::CallbackInfoType info)                                             \
@@ -59,13 +59,13 @@
     },                                                                                                                  \
         ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, decltype(M), M>::extensionInfo( \
             PUERTS_NAMESPACE::Count(__VA_ARGS__))
-#define SelectFunction(SIGNATURE, M, ...)                                                                                     \
-    [](::PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API::CallbackInfoType info)                                                   \
-    {                                                                                                                         \
-        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, SIGNATURE, M>::callWithDefaultValues( \
-            info, ##__VA_ARGS__);                                                                                             \
-    },                                                                                                                        \
-        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, SIGNATURE, M>::info(                  \
+#define SelectFunction(SIGNATURE, M, ...)                                                                           \
+    [](::PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API::CallbackInfoType info)                                         \
+    {                                                                                                               \
+        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, SIGNATURE, M,               \
+            false>::callWithDefaultValues(info, ##__VA_ARGS__);                                                     \
+    },                                                                                                              \
+        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, SIGNATURE, M, false>::info( \
             PUERTS_NAMESPACE::Count(__VA_ARGS__))
 #define SelectFunction_PtrRet(SIGNATURE, M, ...)                                                                   \
     [](::PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API::CallbackInfoType info)                                        \
@@ -75,10 +75,11 @@
     },                                                                                                             \
         ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, SIGNATURE, M, true>::info( \
             PUERTS_NAMESPACE::Count(__VA_ARGS__))
-#define MakeCheckFunction(M)                                                                                         \
-    &(::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, decltype(M), M>::checkedCall), \
-        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, decltype(M), M>::info()
-#define MakeOverload(SIGNATURE, M) PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, SIGNATURE, M>
+#define MakeCheckFunction(M)                                                                                                \
+    &(::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, decltype(M), M, false>::checkedCall), \
+        ::PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, decltype(M), M, false>::info()
+#define MakeOverload(SIGNATURE, M) \
+    PUERTS_NAMESPACE::FuncCallWrapper<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, SIGNATURE, M, false>
 #define CombineOverloads(...)                                                                                   \
     &::PUERTS_NAMESPACE::OverloadsCombiner<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, __VA_ARGS__>::call,      \
         ::PUERTS_NAMESPACE::OverloadsCombiner<PUERTS_NAMESPACE::PUERTS_BINDING_IMPL::API, __VA_ARGS__>::length, \
@@ -118,6 +119,9 @@
 #define __DefCDataPointerConverter_HELPER2(CLS, Suffix) __DefCDataPointerConverter_HELPER1(CLS, Suffix)
 #define __DefObjectType(CLS) __DefObjectType_HELPER2(CLS, PUERTS_BINDING_IMPL)
 #define __DefCDataPointerConverter(CLS) __DefCDataPointerConverter_HELPER2(CLS, PUERTS_BINDING_IMPL)
+#define __DefCDataConverter_HELPER1(CLS, Suffix) __DefCDataConverter_##Suffix(CLS)
+#define __DefCDataConverter_HELPER2(CLS, Suffix) __DefCDataConverter_HELPER1(CLS, Suffix)
+#define __DefCDataConverter(CLS) __DefCDataConverter_HELPER2(CLS, PUERTS_BINDING_IMPL)
 #define UsingNamedCppType(CLS, NAME) __DefScriptTTypeName(NAME, CLS) __DefObjectType(CLS) __DefCDataPointerConverter(CLS)
 
 #define UsingCppType(CLS) UsingNamedCppType(CLS, CLS)

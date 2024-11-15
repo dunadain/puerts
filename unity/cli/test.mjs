@@ -206,19 +206,11 @@ export async function unityTest(cwd, unityPath) {
 
     console.log("[Puer] Generating FunctionBridge");
     writeFileSync(`${cwd}/Assets/csc.rsp`, `
-        -define:PUERTS_CPP_OUTPUT_TO_NATIVE_SRC_UPM
-        -define:EXPERIMENTAL_IL2CPP_PUERTS
+        -define:PUERTS_CPP_OUTPUT_TO_UPM
+        -define:PUERTS_IL2CPP_OPTIMIZATION
     `);
     execUnityEditor(`-executeMethod TestBuilder.GenV2`);
     rm("-rf", `${cwd}/Library/ScriptAssemblies`);
-    
-    await runPuertsMake(join(cwd, '../../native_src_il2cpp'), {
-        backend: 'v8_9.4.146.24',
-        platform: platform,
-        config: 'Debug',
-        arch: 'x64',
-        websocket: 1
-    });
 
     console.log("[Puer] Building testplayer for v2");
     mkdir("-p", `${cwd}/build/v2`);

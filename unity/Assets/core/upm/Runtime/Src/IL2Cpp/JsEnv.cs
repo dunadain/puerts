@@ -6,11 +6,12 @@
 */
 
 #if UNITY_2020_1_OR_NEWER
-#if EXPERIMENTAL_IL2CPP_PUERTS && ENABLE_IL2CPP
+#if PUERTS_IL2CPP_OPTIMIZATION && ENABLE_IL2CPP
 
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.InteropServices;
 #if CSHARP_7_3_OR_NEWER
 using System.Threading.Tasks;
 #endif
@@ -75,7 +76,7 @@ namespace Puerts
             PuertsIl2cpp.NativeAPI.SetGlobalType_ArrayBuffer(typeof(ArrayBuffer));
             PuertsIl2cpp.NativeAPI.SetGlobalType_JSObject(typeof(JSObject));
 
-            nativeJsEnv = PuertsIl2cpp.NativeAPI.CreateNativeJSEnv();
+            nativeJsEnv = PuertsIl2cpp.NativeAPI.CreateJSEngine(0);
             nativePesapiEnv = PuertsIl2cpp.NativeAPI.GetPapiEnvRef(nativeJsEnv);
             var objectPoolType = typeof(PuertsIl2cpp.ObjectPool);
             nativeScriptObjectsRefsMgr = PuertsIl2cpp.NativeAPI.InitialPapiEnvRef(apis, nativePesapiEnv, objectPool, objectPoolType.GetMethod("Add"), objectPoolType.GetMethod("Remove"));
@@ -101,11 +102,11 @@ namespace Puerts
             }
 #endif
 
-            if (PuertsIl2cpp.NativeAPI.GetLibBackend() == 0) 
+            if (PuertsIl2cpp.NativeAPI.GetLibBackend(nativeJsEnv) == 0) 
                 Backend = new BackendV8(this);
-            else if (PuertsIl2cpp.NativeAPI.GetLibBackend() == 1)
+            else if (PuertsIl2cpp.NativeAPI.GetLibBackend(nativeJsEnv) == 1)
                 Backend = new BackendNodeJS(this);
-            else if (PuertsIl2cpp.NativeAPI.GetLibBackend() == 2)
+            else if (PuertsIl2cpp.NativeAPI.GetLibBackend(nativeJsEnv) == 2)
                 Backend = new BackendQuickJS(this);
 
             PuertsIl2cpp.ExtensionMethodInfo.LoadExtensionMethodInfo();
@@ -149,6 +150,48 @@ namespace Puerts
             }
             if (loader is IBuiltinLoadedListener)
                 (loader as IBuiltinLoadedListener).OnBuiltinLoaded(this);
+            
+            PuertsIl2cpp.pesapi_ffi ffi = Marshal.PtrToStructure<PuertsIl2cpp.pesapi_ffi>(apis);
+            var scope = ffi.open_scope(nativePesapiEnv);
+            var env = ffi.get_env_from_ref(nativePesapiEnv);
+            var func = ffi.create_function(env, FooImpl, IntPtr.Zero);
+            var global = ffi.global(env);
+            ffi.set_property(env, global, "CSharpFoo", func);
+            ffi.close_scope(scope);
+        }
+        
+        static IntPtr storeCallback = IntPtr.Zero;
+        
+        [PuertsIl2cpp.MonoPInvokeCallback(typeof(PuertsIl2cpp.pesapi_callback))]
+        static void FooImpl(IntPtr apis, IntPtr info)
+        {
+            PuertsIl2cpp.pesapi_ffi ffi = Marshal.PtrToStructure<PuertsIl2cpp.pesapi_ffi>(apis);
+            var env = ffi.get_env(info);
+            
+            IntPtr p0 = ffi.get_arg(info, 0);
+            if (ffi.is_function(env, p0))
+            {
+                if (storeCallback == IntPtr.Zero)
+                {
+                    storeCallback = ffi.create_value_ref(env, p0, 0);
+                }
+                return;
+            }
+            
+            if (storeCallback != IntPtr.Zero)
+            {
+                IntPtr func = ffi.get_value_from_ref(env, storeCallback);
+                IntPtr[] argv = new IntPtr[2] {p0, ffi.get_arg(info, 1)};
+                IntPtr res = ffi.call_function(env, func, IntPtr.Zero, 2, argv);
+                int sum = ffi.get_value_int32(env, res);
+                UnityEngine.Debug.Log(string.Format("callback result = {0}", sum));
+                return;
+            }
+            
+            int x = ffi.get_value_int32(env, p0);
+            int y = ffi.get_value_int32(env, ffi.get_arg(info, 1));
+            UnityEngine.Debug.Log(string.Format("CSharpFoo called, x = {0}, y = {1}", x, y));
+            ffi.add_return(info, ffi.create_int32(env, x + y));
         }
 
         public void AddRegisterInfoGetter(Type type, Func<RegisterInfo> getter)
@@ -255,7 +298,7 @@ namespace Puerts
             {
                 if (disposed) return;
                 PuertsIl2cpp.NativeAPI.CleanupPapiEnvRef(apis, nativePesapiEnv);
-                PuertsIl2cpp.NativeAPI.DestroyNativeJSEnv(nativeJsEnv);
+                PuertsIl2cpp.NativeAPI.DestroyJSEngine(nativeJsEnv);
                 PuertsIl2cpp.NativeAPI.DestroyJSEnvPrivate(nativeScriptObjectsRefsMgr);
                 nativeScriptObjectsRefsMgr = IntPtr.Zero;
                 disposed = true;

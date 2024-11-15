@@ -50,6 +50,7 @@ struct CSharpMethodInfo
     bool IsStatic;
     bool IsGetter;
     bool IsSetter;
+    bool NeedBoxing;
     std::vector<WrapData*> OverloadDatas;
 };
 
@@ -283,16 +284,16 @@ void SetGlobalType_TypedValue(Il2CppReflectionType *type)
 
 static void MethodCallback(struct pesapi_ffi* apis, pesapi_callback_info info)
 {
+    CSharpMethodInfo* csharpMethodInfo = (CSharpMethodInfo*)apis->get_userdata(info);
     try 
     {
-        WrapData** wrapDatas = (WrapData**)apis->get_userdata(info);
         void* self = nullptr;
         pesapi_env env = apis->get_env(info);
-        if (!((*wrapDatas)->IsStatic))
+        if (!(csharpMethodInfo->IsStatic))
         {
             pesapi_value jsThis = apis->get_holder(info);
             self = apis->get_native_object_ptr(env, jsThis);
-            if ((*wrapDatas)->NeedBoxing)
+            if (csharpMethodInfo->NeedBoxing)
             {
                 auto ptrType = (Il2CppClass*) apis->get_native_object_typeid(env, jsThis);
                 if (Class::IsValuetype(ptrType))
@@ -301,6 +302,7 @@ static void MethodCallback(struct pesapi_ffi* apis, pesapi_callback_info info)
                 }
             }
         }
+        WrapData** wrapDatas = csharpMethodInfo->OverloadDatas.data();
         bool checkArgument = *wrapDatas && *(wrapDatas + 1);
         while(*wrapDatas)
         {
@@ -310,7 +312,8 @@ static void MethodCallback(struct pesapi_ffi* apis, pesapi_callback_info info)
             }
             ++wrapDatas;
         }
-        apis->throw_by_string(info, "invalid arguments"); 
+        std::string err_info = "invalid arguments for " + csharpMethodInfo->Name;
+        apis->throw_by_string(info, err_info.c_str()); 
     } 
     catch (Il2CppExceptionWrapper& exception)
     {
@@ -321,7 +324,8 @@ static void MethodCallback(struct pesapi_ffi* apis, pesapi_callback_info info)
         Il2CppString* result = (Il2CppString*)il2cpp::vm::Runtime::Invoke(toStringMethod, exception.ex, NULL, &outException);
         if (outException != NULL)
         {
-            apis->throw_by_string(info, "unknow c# execption!");
+            std::string err_info = "unknow c# execption for " + csharpMethodInfo->Name;
+            apis->throw_by_string(info, err_info.c_str());
         }
         else
         {
@@ -439,7 +443,7 @@ void PLog(const char* Fmt, ...)
 
 static void* CtorCallback(struct pesapi_ffi* apis, pesapi_callback_info info)
 {
-    JsClassInfoHeader* classInfo = reinterpret_cast<JsClassInfoHeader*>(apis->get_userdata(info));
+    JsClassInfo* classInfo = reinterpret_cast<JsClassInfo*>(apis->get_userdata(info));
     // or will crash in macos.
     if (!classInfo->IsValueType && *(classInfo->CtorWrapDatas) == nullptr)
     {
@@ -469,7 +473,10 @@ static void* CtorCallback(struct pesapi_ffi* apis, pesapi_callback_info info)
         if (isValueType && apis->get_args_len(info) == 0)
             return self;
         else
-            apis->throw_by_string(info, "invalid arguments");
+        {
+            std::string err_info = "invalid arguments for constructor of " + classInfo->Name;
+            apis->throw_by_string(info, err_info.c_str());
+        }
         
     } 
     catch (Il2CppExceptionWrapper& exception)
@@ -481,7 +488,8 @@ static void* CtorCallback(struct pesapi_ffi* apis, pesapi_callback_info info)
         Il2CppString* result = (Il2CppString*)il2cpp::vm::Runtime::Invoke(toStringMethod, exception.ex, NULL, &outException);
         if (outException != NULL)
         {
-            apis->throw_by_string(info, "unknow c# execption!");
+            std::string err_info = "unknow c# execption for constructor of " + classInfo->Name;
+            apis->throw_by_string(info, err_info.c_str());
         }
         else
         {
@@ -512,7 +520,11 @@ static pesapi_value GetPObjectRefInfoValue(struct pesapi_ffi* apis, pesapi_env e
     return apis->get_value_from_ref(env, objectInfo->ValueRef);
 }
 
-static int32_t* FindOrCreateHandleStoreOfValue(struct pesapi_ffi* apis, pesapi_env env, pesapi_value value, pesapi_value_ref* out_value_ref, Il2CppObject** out_object)
+#ifndef UNITY_6000_0_OR_NEWER
+typedef int32_t Il2CppGCHandle;
+#endif
+
+static Il2CppGCHandle* FindOrCreateHandleStoreOfValue(struct pesapi_ffi* apis, pesapi_env env, pesapi_value value, pesapi_value_ref* out_value_ref, Il2CppObject** out_object)
 {
     void* out_ptr;
     if(!apis->get_private(env, value, &out_ptr))
@@ -522,11 +534,11 @@ static int32_t* FindOrCreateHandleStoreOfValue(struct pesapi_ffi* apis, pesapi_e
     }
     
     pesapi_value_ref value_ref = static_cast<pesapi_value_ref>(out_ptr);
-    int32_t* res = nullptr;
+    Il2CppGCHandle* res = nullptr;
     uint32_t field_count;
     if (value_ref)
     {
-        res = reinterpret_cast<int32_t*>(apis->get_ref_internal_fields(value_ref, &field_count));
+        res = reinterpret_cast<Il2CppGCHandle*>(apis->get_ref_internal_fields(value_ref, &field_count));
         if(field_count != 1 || !res)
         {
             PLog("invalid internal_fields size: %u, ptr:%p", field_count, res);
@@ -540,7 +552,7 @@ static int32_t* FindOrCreateHandleStoreOfValue(struct pesapi_ffi* apis, pesapi_e
     {
         value_ref = apis->create_value_ref(env, value, (sizeof(std::atomic<Il2CppObject*>) + sizeof(void*) - 1) / sizeof(void*));
         
-        res = reinterpret_cast<int32_t*>(apis->get_ref_internal_fields(value_ref, &field_count));
+        res = reinterpret_cast<Il2CppGCHandle*>(apis->get_ref_internal_fields(value_ref, &field_count));
         apis->set_private(env, value, value_ref);
         *out_object = nullptr;
     }
@@ -558,7 +570,7 @@ static Il2CppObject* FunctionToDelegate(struct pesapi_ffi* apis, pesapi_env env,
 {
     pesapi_value_ref value_ref;
     Il2CppObject* ret = nullptr;
-    int32_t* handle_store = FindOrCreateHandleStoreOfValue(apis, env, jsval, &value_ref, &ret);
+    Il2CppGCHandle* handle_store = FindOrCreateHandleStoreOfValue(apis, env, jsval, &value_ref, &ret);
     if (!handle_store) return nullptr;
 
     if (ret == nullptr)
@@ -899,7 +911,7 @@ handle_underlying:
                     
                     pesapi_value_ref value_ref;
                     Il2CppObject* ret = nullptr;
-                    int32_t* handle_store = FindOrCreateHandleStoreOfValue(apis, env, jsval, &value_ref, &ret);
+                    Il2CppGCHandle* handle_store = FindOrCreateHandleStoreOfValue(apis, env, jsval, &value_ref, &ret);
                     if (!handle_store) return nullptr;
                     
                     if (ret == nullptr) 
@@ -1884,8 +1896,8 @@ struct JsEnvPrivate
             // insert前已经对有效性进行判断
             uint32_t fieldCount;
             //PLog("CleanupPendingKillScriptObjects: %p", valueRef);
-            int32_t* store = reinterpret_cast<int32_t*>(apis->get_ref_internal_fields(valueRef, &fieldCount));
-            int32_t handle = *store;
+            Il2CppGCHandle* store = reinterpret_cast<Il2CppGCHandle*>(apis->get_ref_internal_fields(valueRef, &fieldCount));
+            Il2CppGCHandle handle = *store;
             if (nullptr == il2cpp::gc::GCHandle::GetTarget(handle)) //假如不为空代表已经重新被绑定了
             {
                 il2cpp::gc::GCHandle::Free(handle);
@@ -2071,11 +2083,11 @@ void ReleaseCSharpTypeInfo(puerts::JsClassInfo* classInfo)
     delete classInfo;
 }
 
-static void SetParamArrayFlagAndOptionalNum(puerts::WrapData* data, const char* signature)
+static bool SetParamArrayFlagAndOptionalNum(puerts::WrapData* data, const char* signature)
 {
     data->HasParamArray = false;
     data->OptionalNum = 0;
-    data->NeedBoxing = false;
+    bool NeedBoxing = false;
     
     const char* p = signature;
     while(*p)
@@ -2086,7 +2098,7 @@ static void SetParamArrayFlagAndOptionalNum(puerts::WrapData* data, const char* 
         }
         if (*p == 'T')
         {
-            data->NeedBoxing = true;
+            NeedBoxing = true;
         }
         if (*p == 'D')
         {
@@ -2094,6 +2106,7 @@ static void SetParamArrayFlagAndOptionalNum(puerts::WrapData* data, const char* 
         }
         ++p;
     }
+    return NeedBoxing;
 }
 
 puerts::WrapData* AddConstructor(puerts::JsClassInfo* classInfo, const char* signature, puerts::WrapFuncPtr WrapFunc, MethodInfo* method, Il2CppMethodPointer methodPointer, int typeInfoNum)
@@ -2125,7 +2138,7 @@ puerts::WrapData* AddMethod(puerts::JsClassInfo* classInfo, const char* signatur
     data->Wrap = WrapFunc;
     data->IsStatic = isStatic;
     data->IsExtensionMethod = isExtensionMethod;
-    SetParamArrayFlagAndOptionalNum(data, signature);
+    bool NeedBoxing = SetParamArrayFlagAndOptionalNum(data, signature);
     
     for(int i = 0; i < classInfo->Methods.size(); ++i)
     {
@@ -2145,7 +2158,7 @@ puerts::WrapData* AddMethod(puerts::JsClassInfo* classInfo, const char* signatur
     //puerts::PLog("%s %d %d %d %p", name, typeInfoNum, allocSize, sizeof(puerts::WrapData), data);
     std::vector<puerts::WrapData*> OverloadDatas;
     OverloadDatas.push_back(data);
-    classInfo->Methods.push_back({std::string(name), isStatic, isGetter, isSetter, std::move(OverloadDatas)});
+    classInfo->Methods.push_back({std::string(name), isStatic, isGetter, isSetter, NeedBoxing, std::move(OverloadDatas)});
     return data;
 }
 
@@ -2222,7 +2235,7 @@ bool RegisterCSharpType(puerts::JsClassInfo* classInfo)
     for (auto const& method: methods)
     {
         pesapi_set_method_info(
-                properties, pos++, method->Name.c_str(), method->IsStatic, &puerts::MethodCallback, method->OverloadDatas.data(), nullptr);
+                properties, pos++, method->Name.c_str(), method->IsStatic, &puerts::MethodCallback, method, nullptr);
     }
     
     for (auto const& kv: gseters)
@@ -2231,8 +2244,8 @@ bool RegisterCSharpType(puerts::JsClassInfo* classInfo)
         pesapi_set_property_info(properties, pos++, geter_or_setter->Name.c_str(), geter_or_setter->IsStatic, 
             kv.second.first ? &puerts::MethodCallback : nullptr,
             kv.second.second ? &puerts::MethodCallback : nullptr, 
-            kv.second.first ? kv.second.first->OverloadDatas.data() : nullptr,
-            kv.second.second ? kv.second.second->OverloadDatas.data() : nullptr, 
+            kv.second.first,
+            kv.second.second,
             nullptr);
     }
     
