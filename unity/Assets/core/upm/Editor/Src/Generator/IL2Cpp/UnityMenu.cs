@@ -22,7 +22,7 @@ namespace PuertsIl2cpp.Editor
         public class UnityMenu {
             [MenuItem(Puerts.Editor.Generator.UnityMenu.PUERTS_MENU_PREFIX + "/Generate For xIl2cpp mode (all in one)", false, 2)]
             public static void GenV2() {
-                GenerateCppWrappers();
+                GenerateCppWrappersInConfigure();
                 GenerateExtensionMethodInfos();
                 GenerateLinkXML();
                 GenerateCppPlugin();
