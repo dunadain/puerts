@@ -8,6 +8,7 @@
 
 #include "CppObjectMapper.h"
 #include "DataTransfer.h"
+#include "PString.h"
 
 namespace PUERTS_NAMESPACE
 {
@@ -31,7 +32,7 @@ void FCppObjectMapper::LoadCppType(const v8::FunctionCallbackInfo<v8::Value>& In
         return;
     }
 
-    std::string TypeName = *(v8::String::Utf8Value(Isolate, Info[0]));
+    PString TypeName = *(v8::String::Utf8Value(Isolate, Info[0]));
 
     auto ClassDef = FindCppTypeClassByName(TypeName);
     if (ClassDef)
@@ -40,7 +41,7 @@ void FCppObjectMapper::LoadCppType(const v8::FunctionCallbackInfo<v8::Value>& In
     }
     else
     {
-        const std::string ErrMsg = "can not find type: " + TypeName;
+        PString ErrMsg = "can not find type: " + TypeName;
         ThrowException(Isolate, ErrMsg.c_str());
     }
 }
@@ -169,7 +170,7 @@ v8::Local<v8::FunctionTemplate> FCppObjectMapper::GetTemplateOfClass(v8::Isolate
         Template->InstanceTemplate()->SetInternalFieldCount(4);
 
         JSPropertyInfo* PropertyInfo = ClassDefinition->Properties;
-        while (PropertyInfo && PropertyInfo->Name && PropertyInfo->Getter)
+        while (PropertyInfo && PropertyInfo->Name)
         {
             v8::PropertyAttribute PropertyAttribute = v8::DontDelete;
             if (!PropertyInfo->Setter)
@@ -187,7 +188,7 @@ v8::Local<v8::FunctionTemplate> FCppObjectMapper::GetTemplateOfClass(v8::Isolate
         }
 
         PropertyInfo = ClassDefinition->Variables;
-        while (PropertyInfo && PropertyInfo->Name && PropertyInfo->Getter)
+        while (PropertyInfo && PropertyInfo->Name)
         {
             v8::PropertyAttribute PropertyAttribute = v8::DontDelete;
             if (!PropertyInfo->Setter)
@@ -304,7 +305,8 @@ void FCppObjectMapper::BindCppObject(
     FObjectCacheNode* CacheNodePtr;
     if (Iter != CDataCache.end())
     {
-        CacheNodePtr = Iter->second.Add(ClassDefinition->TypeId);
+        auto Temp = Iter->second.Find(ClassDefinition->TypeId);
+        CacheNodePtr = Temp ? Temp : Iter->second.Add(ClassDefinition->TypeId);
     }
     else
     {

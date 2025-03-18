@@ -5,28 +5,14 @@
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
 
-#if UNITY_2020_1_OR_NEWER
-#if PUERTS_IL2CPP_OPTIMIZATION && ENABLE_IL2CPP
-
 using System;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using System.Collections.Generic;
 
-namespace PuertsIl2cpp
+namespace Puerts
 {
-#pragma warning disable 414
-    public class MonoPInvokeCallbackAttribute : System.Attribute
-    {
-        private Type type;
-        public MonoPInvokeCallbackAttribute(Type t)
-        {
-            type = t;
-        }
-    }
-#pragma warning restore 414
-
     public class NativeAPI
     {
 #if (UNITY_IPHONE || UNITY_TVOS || UNITY_WEBGL || UNITY_SWITCH) && !UNITY_EDITOR
@@ -34,28 +20,32 @@ namespace PuertsIl2cpp
 #else
         const string DLLNAME = "puerts";
 #endif
-
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void InitialPuerts(IntPtr PesapiImpl);
-
-        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern int GetLibBackend(IntPtr isolate);
-
-        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr CreateJSEngine(int backendType);
-
-        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void DestroyJSEngine(IntPtr isolate);
+#if !PUERTS_DISABLE_IL2CPP_OPTIMIZATION && (PUERTS_IL2CPP_OPTIMIZATION || !UNITY_WEBGL || !UNITY_IPHONE) && ENABLE_IL2CPP
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr GetRegsterApi();
         
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr GetFFIApi();
+        public static extern IntPtr GetV8FFIApi();
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr GetPapiEnvRef(IntPtr isolate);
+        public static extern IntPtr GetV8PapiEnvRef(IntPtr isolate);
         
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr GetQjsFFIApi();
+
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr GetQjsPapiEnvRef(IntPtr isolate);
+        
+        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void InitialPuerts(IntPtr PesapiImpl);
+
+        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void AddPendingKillScriptObjects(IntPtr ffiApi, IntPtr jsEnv, IntPtr valueRef);
+        
+        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
+        public static extern void CleanupPendingKillScriptObjects(IntPtr jsEnv);
+
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static IntPtr InitialPapiEnvRef(IntPtr api, IntPtr envRef, Object obj, MethodBase addMethodBase, MethodBase removeMethodBase)
         {
@@ -74,38 +64,8 @@ namespace PuertsIl2cpp
             throw new NotImplementedException();
         }
 
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr CreateCSharpTypeInfo(string name, IntPtr type_id, IntPtr super_type_id, bool isValueType, bool isDelegate, string delegateSignature);
-
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void ReleaseCSharpTypeInfo(IntPtr classInfo);
-
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr FindWrapFunc(string signature);
-
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void FindFieldWrap(string signature, out IntPtr getter, out IntPtr setter);
-
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr AddConstructor(IntPtr classInfo, string signature, IntPtr WrapFunc, IntPtr method, IntPtr methodPointer, int typeInfoNum);
-
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr AddMethod(IntPtr classInfo, string signature, IntPtr WrapFunc, string name, bool isStatic, bool isExtensionethod, bool isGetter, bool isSetter, IntPtr method, IntPtr methodPointer, int typeInfoNum);
-
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern bool AddField(IntPtr classInfo, IntPtr getter, IntPtr setter, string name, bool isStatic, IntPtr fieldInfo, int offset, IntPtr fieldTypeInfo);
-
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetTypeInfo(IntPtr wrapData, int index, IntPtr typeId);
-
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern bool RegisterCSharpType(IntPtr classInfo);
-
-        //[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        //public static extern void SetObjectPool(IntPtr jsEnv, IntPtr objectPoolAddMethodInfo, IntPtr objectPoolAdd, IntPtr objectPoolRemoveMethodInfo, IntPtr objectPoolRemove, IntPtr objectPoolInstance);
-
         [MethodImpl(MethodImplOptions.InternalCall)]
-        public static void SetRegisterNoThrow(MethodBase methodInfo)
+        public static void SetExtensionMethodGet(MethodBase methodInfo)
         {
         }
 
@@ -115,62 +75,8 @@ namespace PuertsIl2cpp
             throw new NotImplementedException();
         }
 
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void AddPendingKillScriptObjects(IntPtr ffiApi, IntPtr jsEnv, IntPtr valueRef);
-        
-        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
-        public static extern void CleanupPendingKillScriptObjects(IntPtr jsEnv);
-
-        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void CreateInspector(IntPtr jsEnv, int port);
-
-        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void DestroyInspector(IntPtr jsEnv);
-
-        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern bool InspectorTick(IntPtr jsEnv);
-        
-        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        public static extern bool LogicTick(IntPtr jsEnv);
-
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static object GetModuleExecutor(IntPtr apis, IntPtr NativeJsEnvPtr, Type type)
-        {
-            throw new NotImplementedException();
-        }
-
-        [MethodImpl(MethodImplOptions.InternalCall)]
-        public static IntPtr GetMethodPointer(MethodBase methodInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        [MethodImpl(MethodImplOptions.InternalCall)]
-        public static IntPtr GetMethodInfoPointer(MethodBase methodInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        [MethodImpl(MethodImplOptions.InternalCall)]
-        public static int GetFieldOffset(FieldInfo fieldInfo, bool isInValueType)
-        {
-            throw new NotImplementedException();
-        }
-
-        [MethodImpl(MethodImplOptions.InternalCall)]
-        public static IntPtr GetFieldInfoPointer(FieldInfo fieldInfo)
-        {
-            throw new NotImplementedException();
-        }
-
-        [MethodImpl(MethodImplOptions.InternalCall)]
-        public static IntPtr GetTypeId(Type type)
-        {
-            throw new NotImplementedException();
-        }
-
-        [MethodImpl(MethodImplOptions.InternalCall)]
-        public static Type TypeIdToType(IntPtr typeId)
         {
             throw new NotImplementedException();
         }
@@ -213,39 +119,51 @@ namespace PuertsIl2cpp
         [MonoPInvokeCallback(typeof(LogCallback))]
         public static void LogImpl(string msg)
         {
+#if PUERTS_GENERAL
+            System.Console.WriteLine("debug msg: " + msg);
+#else
             UnityEngine.Debug.Log("debug msg: " + msg);
+#endif
         }
 
         public static LogCallback Log = LogImpl;
-
-        //[DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
-        //public static extern void SetLogCallback(IntPtr log);
         
         [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetLogCallbackInternal(IntPtr log);
 
         //[UnityEngine.Scripting.RequiredByNativeCodeAttribute()]
-        public static void SetLogCallback(LogCallback log)
+        public static void SetLogCallback(LogCallback log, LogCallback logWarning, LogCallback logError)
         {
 #if PUERTS_GENERAL || (UNITY_WSA && !UNITY_EDITOR) || UNITY_STANDALONE_WIN
             GCHandle.Alloc(log);
+            GCHandle.Alloc(logWarning);
+            GCHandle.Alloc(logError);
 #endif
             IntPtr fn1 = log == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(log);
+            IntPtr fn2 = logWarning == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(logWarning);
+            IntPtr fn3 = logError == null ? IntPtr.Zero : Marshal.GetFunctionPointerForDelegate(logError);
 
             try 
             {
                 //SetLogCallback(fn1);
                 SetLogCallbackInternal(fn1);
+                PuertsDLL.SetLogCallback(fn1, fn2, fn3);
             }
             catch(DllNotFoundException)
             {
+#if PUERTS_GENERAL
+                System.Console.WriteLine("[Puer001] PuerTS's Native Plugin(s) is missing. You can solve this problem following the FAQ.");
+#else
                 UnityEngine.Debug.LogError("[Puer001] PuerTS's Native Plugin(s) is missing. You can solve this problem following the FAQ.");
+#endif
                 throw;
             }
         }
+#endif
     }
-    
+
     public delegate void pesapi_callback(IntPtr apis, IntPtr info);
+    public delegate void pesapi_function_finalize(IntPtr apis, IntPtr data, IntPtr env_private);
 
     public delegate IntPtr pesapi_create_null_func(IntPtr env);
     public delegate IntPtr pesapi_create_undefined_func(IntPtr env);
@@ -259,7 +177,7 @@ namespace PuertsIl2cpp
     public delegate IntPtr pesapi_create_binary_func(IntPtr env, IntPtr str, UIntPtr length);
     public delegate IntPtr pesapi_create_array_func(IntPtr env);
     public delegate IntPtr pesapi_create_object_func(IntPtr env);
-    public delegate IntPtr pesapi_create_function_func(IntPtr env, pesapi_callback native_impl, IntPtr data);
+    public delegate IntPtr pesapi_create_function_func(IntPtr env, pesapi_callback native_impl, IntPtr data, pesapi_function_finalize finalize);
     public delegate IntPtr pesapi_create_class_func(IntPtr env, IntPtr type_id);
 
     public delegate bool pesapi_get_value_bool_func(IntPtr env, IntPtr value);
@@ -426,6 +344,3 @@ namespace PuertsIl2cpp
         public pesapi_set_env_private_func set_env_private;
     }
 }
-
-#endif
-#endif

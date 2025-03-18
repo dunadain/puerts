@@ -9,13 +9,11 @@
 #include "CppObjectMapper.h"
 #include "DataTransfer.h"
 #include "pesapi.h"
+#include "PString.h"
+#include "TypeInfo.hpp"
 
 namespace PUERTS_NAMESPACE
 {
-template <typename T>
-inline void __USE(T&&)
-{
-}
 
 #define container_of(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))
 
@@ -39,7 +37,7 @@ void FCppObjectMapper::LoadCppType(const v8::FunctionCallbackInfo<v8::Value>& In
         return;
     }
 
-    std::string TypeName = *(v8::String::Utf8Value(Isolate, Info[0]));
+    PString TypeName = *(v8::String::Utf8Value(Isolate, Info[0]));
 
     auto ClassDef = FindCppTypeClassByName(TypeName);
     if (ClassDef)
@@ -48,7 +46,7 @@ void FCppObjectMapper::LoadCppType(const v8::FunctionCallbackInfo<v8::Value>& In
     }
     else
     {
-        const std::string ErrMsg = "can not find type: " + TypeName;
+        PString ErrMsg = "can not find type: " + TypeName;
         ThrowException(Isolate, ErrMsg.c_str());
     }
 }
@@ -123,12 +121,48 @@ static void PesapiFunctionCallback(const v8::FunctionCallbackInfo<v8::Value>& in
     FunctionInfo->Callback(&v8impl::g_pesapi_ffi, (pesapi_callback_info)(&info));
 }
 
-v8::MaybeLocal<v8::Function> FCppObjectMapper::CreateFunction(v8::Local<v8::Context> Context, pesapi_callback Callback, void* Data)
+void FCppObjectMapper::CallbackDataGarbageCollected(const v8::WeakCallbackInfo<PesapiCallbackData>& Data)
 {
-    auto CallbackData = new PesapiCallbackData {Callback, Data};
-    FunctionDatas.push_back(CallbackData);
-    auto V8Data = v8::External::New(Context->GetIsolate(), &CallbackData->Data);
-    return v8::FunctionTemplate::New(Context->GetIsolate(), PesapiFunctionCallback, V8Data)->GetFunction(Context);
+    PesapiCallbackData* CallbackData = Data.GetParameter();
+    if (CallbackData->Finalize)
+    {
+        CallbackData->Finalize(&v8impl::g_pesapi_ffi, CallbackData->Data, DataTransfer::GetIsolatePrivateData(Data.GetIsolate()));
+    }
+    for (auto it = CallbackData->CppObjectMapper->FunctionDatas.begin(); it != CallbackData->CppObjectMapper->FunctionDatas.end(); )
+    {
+        if (*it == CallbackData)
+        {
+            it = CallbackData->CppObjectMapper->FunctionDatas.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    delete CallbackData;
+}
+
+v8::MaybeLocal<v8::Function> FCppObjectMapper::CreateFunction(v8::Local<v8::Context> Context, pesapi_callback Callback, void* Data, pesapi_function_finalize Finalize)
+{
+    auto Isolate = Context->GetIsolate();
+    auto CallbackData = new PesapiCallbackData {Callback, Data, this};
+    CallbackData->Finalize = Finalize;
+    auto V8Data = v8::External::New(Isolate, &CallbackData->Data);
+    auto Template = v8::FunctionTemplate::New(Isolate, PesapiFunctionCallback, V8Data);
+    Template->Set(Isolate, "__do_not_cache", v8::ObjectTemplate::New(Isolate));
+    auto Ret = Template->GetFunction(Context);
+    if (!Ret.IsEmpty())
+    {
+        CallbackData->JsFunction.Reset(Isolate, Ret.ToLocalChecked());
+        CallbackData->JsFunction.SetWeak<PesapiCallbackData>(
+            CallbackData, CallbackDataGarbageCollected, v8::WeakCallbackType::kInternalFields);
+        FunctionDatas.push_back(CallbackData);
+    }
+    else
+    {
+        delete CallbackData;
+    }
+    return Ret;
 }
 
 bool FCppObjectMapper::IsInstanceOfCppObject(v8::Isolate* Isolate, const void* TypeId, v8::Local<v8::Object> JsObject)
@@ -206,7 +240,7 @@ v8::Local<v8::FunctionTemplate> FCppObjectMapper::GetTemplateOfClass(v8::Isolate
         Template->InstanceTemplate()->SetInternalFieldCount(4);
 
         JSPropertyInfo* PropertyInfo = ClassDefinition->Properties;
-        while (PropertyInfo && PropertyInfo->Name && PropertyInfo->Getter)
+        while (PropertyInfo && PropertyInfo->Name)
         {
             v8::PropertyAttribute PropertyAttribute = v8::DontDelete;
             if (!PropertyInfo->Setter)
@@ -224,7 +258,7 @@ v8::Local<v8::FunctionTemplate> FCppObjectMapper::GetTemplateOfClass(v8::Isolate
         }
 
         PropertyInfo = ClassDefinition->Variables;
-        while (PropertyInfo && PropertyInfo->Name && PropertyInfo->Getter)
+        while (PropertyInfo && PropertyInfo->Name)
         {
             v8::PropertyAttribute PropertyAttribute = v8::DontDelete;
             if (!PropertyInfo->Setter)
@@ -340,7 +374,8 @@ void FCppObjectMapper::BindCppObject(
     FObjectCacheNode* CacheNodePtr;
     if (Iter != CDataCache.end())
     {
-        CacheNodePtr = Iter->second.Add(ClassDefinition->TypeId);
+        auto Temp = Iter->second.Find(ClassDefinition->TypeId);
+        CacheNodePtr = Temp ? Temp : Iter->second.Add(ClassDefinition->TypeId);
     }
     else
     {
@@ -446,7 +481,12 @@ void FCppObjectMapper::UnInitialize(v8::Isolate* InIsolate)
     }
     for(int i = 0;i < FunctionDatas.size(); ++i)
     {
-        delete FunctionDatas[i];
+        auto CallbackData = FunctionDatas[i];
+        if (CallbackData->Finalize)
+        {
+            CallbackData->Finalize(&v8impl::g_pesapi_ffi, CallbackData->Data, PData);
+        }
+        delete CallbackData;
     }
     FunctionDatas.clear();
     CDataCache.clear();

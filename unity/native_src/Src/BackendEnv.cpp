@@ -225,11 +225,8 @@ void FBackendEnv::GlobalPrepare()
         std::string Flags = "--stack_size=856";
 #if PUERTS_DEBUG
         Flags += " --expose-gc";
-#if PLATFORM_MAC
-        Flags += " --jitless --no-expose-wasm";
 #endif
-#endif
-#if defined(PLATFORM_IOS) || defined(PLATFORM_OHOS)
+#if defined(PLATFORM_IOS) || defined(PLATFORM_OHOS) || defined(JITLESS)
         Flags += " --jitless --no-expose-wasm";
 #endif
 #if V8_MAJOR_VERSION <= 9
@@ -1163,7 +1160,7 @@ std::string FBackendEnv::GetJSStackTrace()
     JS_FreeValue(ctx, stack);
     return ret;
 #else
-    return StackTraceToString(Isolate, v8::StackTrace::CurrentStackTrace(Isolate, 10, v8::StackTrace::kDetailed));
+    return StackTraceToString(Isolate, v8::StackTrace::CurrentStackTrace(Isolate, 10, v8::StackTrace::kDetailed)).c_str();
 #endif
 }
 

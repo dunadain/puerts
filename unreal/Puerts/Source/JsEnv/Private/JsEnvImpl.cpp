@@ -157,6 +157,12 @@ static void ToCPtrArray(const v8::FunctionCallbackInfo<v8::Value>& Info)
     Info.GetReturnValue().Set(Ret);
 }
 
+static void GetFNameString(const v8::FunctionCallbackInfo<v8::Value>& Info)
+{
+    FName RequiredFName(*FV8Utils::ToFString(Info.GetIsolate(), Info[0]));
+    Info.GetReturnValue().Set(FV8Utils::ToV8String(Info.GetIsolate(), RequiredFName));
+}
+
 #if defined(WITH_NODEJS)
 void FJsEnvImpl::StartPolling()
 {
@@ -493,6 +499,11 @@ FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::sha
 
     MethodBindingHelper<&FJsEnvImpl::LoadCppType>::Bind(Isolate, Context, PuertsObj, "loadCPPType", This);
 
+    PuertsObj
+        ->Set(Context, FV8Utils::ToV8String(Isolate, "getFNameString"),
+            v8::FunctionTemplate::New(Isolate, GetFNameString)->GetFunction(Context).ToLocalChecked())
+        .Check();
+
     MethodBindingHelper<&FJsEnvImpl::UEClassToJSClass>::Bind(Isolate, Context, Global, "__tgjsUEClassToJSClass", This);
 
     MethodBindingHelper<&FJsEnvImpl::NewContainer>::Bind(Isolate, Context, Global, "__tgjsNewContainer", This);
@@ -677,6 +688,10 @@ FJsEnvImpl::FJsEnvImpl(std::shared_ptr<IJSModuleLoader> InModuleLoader, std::sha
 #if defined(WITH_WEBSOCKET)
     InitWebsocketPPWrap(Context);
     ExecuteModule("puerts/websocketpp.js");
+#endif
+#ifdef WITH_QUICKJS
+    auto rt = Isolate->runtime_;
+    JS_SetMaxStackSize(rt, 1024 * 1024);
 #endif
 }
 
@@ -1506,7 +1521,7 @@ void FJsEnvImpl::ReloadModule(FName ModuleName, const FString& JsSource)
     JsHotReload(ModuleName, JsSource);
 }
 
-void FJsEnvImpl::ReloadSource(const FString& Path, const std::string& JsSource)
+void FJsEnvImpl::ReloadSource(const FString& Path, const PString& JsSource)
 {
 #ifdef SINGLE_THREAD_VERIFY
     ensureMsgf(BoundThreadId == FPlatformTLS::GetCurrentThreadId(), TEXT("Access by illegal thread!"));
@@ -1704,7 +1719,7 @@ FString FJsEnvImpl::CurrentStackTrace()
     v8::Isolate::Scope IsolateScope(Isolate);
     v8::HandleScope HandleScope(Isolate);
 
-    std::string StackTrace = StackTraceToString(Isolate, v8::StackTrace::CurrentStackTrace(Isolate, 10, v8::StackTrace::kDetailed));
+    PString StackTrace = StackTraceToString(Isolate, v8::StackTrace::CurrentStackTrace(Isolate, 10, v8::StackTrace::kDetailed));
     return UTF8_TO_TCHAR(StackTrace.c_str());
 #else
     return TEXT("");
@@ -2641,6 +2656,18 @@ bool FJsEnvImpl::RemoveFromDelegate(
         return false;
     }
 
+    if (!Iter->second.Owner.IsValid())
+    {
+        Logger->Warn("try to unbind a delegate with invalid owner!");
+        ClearDelegate(Isolate, Context, DelegatePtr);
+        if (!Iter->second.PassByPointer)
+        {
+            delete ((FScriptDelegate*) Iter->first);
+        }
+        DelegateMap.erase(Iter);
+        return false;
+    }
+
     FScriptDelegate Delegate;
 
     if (Iter->second.DelegateProperty)
@@ -2915,7 +2942,8 @@ void FJsEnvImpl::BindStruct(
         auto CacheNodePtr = StructCache.Find(Ptr);
         if (CacheNodePtr)
         {
-            CacheNodePtr = CacheNodePtr->Add(ScriptStructWrapper->Struct.Get());
+            auto Temp = CacheNodePtr->Find(ScriptStructWrapper->Struct.Get());
+            CacheNodePtr = Temp ? Temp : CacheNodePtr->Add(ScriptStructWrapper->Struct.Get());
         }
         else
         {
@@ -4404,7 +4432,7 @@ void FJsEnvImpl::Mixin(const v8::FunctionCallbackInfo<v8::Value>& Info)
         New->Bind();
         New->StaticLink(true);
 
-        (void) (New->GetDefaultObject());
+        auto CDO = New->GetDefaultObject();
         if (auto AnimClass = Cast<UAnimBlueprintGeneratedClass>(New))
         {
             AnimClass->UpdateCustomPropertyListForPostConstruction();
@@ -4416,6 +4444,14 @@ void FJsEnvImpl::Mixin(const v8::FunctionCallbackInfo<v8::Value>& Info)
         else if (auto BPClass = Cast<UBlueprintGeneratedClass>(New))
         {
             BPClass->UpdateCustomPropertyListForPostConstruction();
+        }
+
+        if (CDO->IsA<AActor>())
+        {
+            if (UBlueprintGeneratedClass* BPGClass = Cast<UBlueprintGeneratedClass>(New))
+            {
+                BPGClass->bCooked = true;
+            }
         }
 
 #if ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 12
@@ -4461,7 +4497,7 @@ void FJsEnvImpl::FindModule(const v8::FunctionCallbackInfo<v8::Value>& Info)
 
     CHECK_V8_ARGS(EArgString);
 
-    std::string Name = *(v8::String::Utf8Value(Isolate, Info[0]));
+    PString Name = *(v8::String::Utf8Value(Isolate, Info[0]));
 
     auto Func = FindAddonRegisterFunc(Name);
 

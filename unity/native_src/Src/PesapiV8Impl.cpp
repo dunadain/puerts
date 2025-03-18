@@ -5,18 +5,22 @@
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
  */
-
-#ifndef WITH_QUICKJS
-
+ 
 #include "pesapi.h"
-#include "DataTransfer.h"
+#include "TypeInfo.hpp"
+#include "PString.h"
 #include "JSClassRegister.h"
-#include "ObjectMapper.h"
 
 #include <string>
 #include <sstream>
 #include <vector>
 #include <cstring>
+
+#ifdef WITH_V8
+
+#include "DataTransfer.h"
+#include "ObjectMapper.h"
+
 
 struct pesapi_env_ref__
 {
@@ -53,7 +57,7 @@ struct pesapi_scope__
     }
     v8::HandleScope scope;
     v8::TryCatch trycatch;
-    std::string errinfo;
+    puerts::PString errinfo;
 };
 
 static_assert(sizeof(pesapi_scope_memory) >= sizeof(pesapi_scope__), "sizeof(pesapi_scope__) > sizeof(pesapi_scope_memory__)");
@@ -162,10 +166,10 @@ pesapi_value pesapi_create_object(pesapi_env env)
     return v8impl::PesapiValueFromV8LocalValue(v8::Object::New(context->GetIsolate()));
 }
 
-pesapi_value pesapi_create_function(pesapi_env env, pesapi_callback native_impl, void* data)
+pesapi_value pesapi_create_function(pesapi_env env, pesapi_callback native_impl, void* data, pesapi_function_finalize finalize)
 {
     auto context = v8impl::V8LocalContextFromPesapiEnv(env);
-    auto func = puerts::DataTransfer::IsolateData<puerts::ICppObjectMapper>(context->GetIsolate())->CreateFunction(context, native_impl, data);
+    auto func = puerts::DataTransfer::IsolateData<puerts::ICppObjectMapper>(context->GetIsolate())->CreateFunction(context, native_impl, data, finalize);
     if (func.IsEmpty())
         return nullptr;
     return v8impl::PesapiValueFromV8LocalValue(func.ToLocalChecked());
@@ -558,7 +562,7 @@ const char* pesapi_get_exception_as_string(pesapi_scope scope, bool with_stack)
         std::ostringstream stm;
         v8::String::Utf8Value fileName(isolate, message->GetScriptResourceName());
         int lineNum = message->GetLineNumber(context).FromJust();
-        stm << *fileName << ":" << lineNum << ": " << scope->errinfo;
+        stm << *fileName << ":" << lineNum << ": " << scope->errinfo.c_str();
 
         stm << std::endl;
 
@@ -569,7 +573,7 @@ const char* pesapi_get_exception_as_string(pesapi_scope scope, bool with_stack)
             v8::String::Utf8Value stackTraceVal(isolate, stackTrace);
             stm << std::endl << *stackTraceVal;
         }
-        scope->errinfo = stm.str();
+        scope->errinfo = stm.str().c_str();
     }
     return scope->errinfo.c_str();
 }
@@ -901,6 +905,8 @@ pesapi_ffi g_pesapi_ffi {
 
 }    // namespace v8impl
 
+#endif
+
 EXTERN_C_START
 
 struct pesapi_type_info__
@@ -1023,7 +1029,7 @@ void pesapi_define_class(const void* type_id, const void* super_type_id, const c
     puerts::JSClassDefinition classDef = JSClassEmptyDefinition;
     classDef.TypeId = type_id;
     classDef.SuperTypeId = super_type_id;
-    std::string ScriptNameWithModuleName = GPesapiModuleName == nullptr ? std::string() : GPesapiModuleName;
+    puerts::PString ScriptNameWithModuleName = GPesapiModuleName == nullptr ? puerts::PString() : GPesapiModuleName;
     if (GPesapiModuleName)
     {
         ScriptNameWithModuleName += ".";
@@ -1120,7 +1126,7 @@ void pesapi_class_type_info(const char* proto_magic_id, const void* type_id, con
 
 const void* pesapi_find_type_id(const char* module_name, const char* type_name)
 {
-    std::string fullname = module_name;
+    puerts::PString fullname = module_name;
     fullname += ".";
     fullname += type_name;
     const auto class_def = puerts::FindCppTypeClassByName(fullname);
@@ -1138,5 +1144,3 @@ pesapi_func_ptr reg_apis[] = {(pesapi_func_ptr) &pesapi_alloc_type_infos, (pesap
     (pesapi_func_ptr) &pesapi_on_class_not_found, (pesapi_func_ptr) &pesapi_class_type_info,
     (pesapi_func_ptr) &pesapi_find_type_id};
 MSVC_PRAGMA(warning(pop))
-
-#endif

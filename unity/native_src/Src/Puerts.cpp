@@ -10,7 +10,12 @@
 #include "Log.h"
 #ifdef WITH_IL2CPP_OPTIMIZATION
 #include "pesapi.h"
+#ifdef WITH_QUICKJS
+#include "CppObjectMapperQuickjs.h"
+#endif
+#ifdef WITH_V8
 #include "CppObjectMapper.h"
+#endif
 #endif
 
 #define API_LEVEL 34
@@ -57,6 +62,11 @@ V8_EXPORT int GetLibBackend(v8::Isolate *Isolate)
 
 V8_EXPORT v8::Isolate *CreateJSEngine(int backend)
 {
+#if WITH_QUICKJS
+    if (backend != puerts::JSEngineBackend::QuickJS && backend != puerts::JSEngineBackend::Auto) return nullptr;
+#else
+    if (backend == puerts::JSEngineBackend::QuickJS && backend != puerts::JSEngineBackend::Auto) return nullptr;
+#endif
     auto JsEngine = new JSEngine(nullptr, nullptr);
     return JsEngine->MainIsolate;
 }
@@ -78,7 +88,9 @@ V8_EXPORT void DestroyJSEngine(v8::Isolate *Isolate)
 }
 
 #ifdef WITH_IL2CPP_OPTIMIZATION
-V8_EXPORT pesapi_env_ref GetPapiEnvRef(v8::Isolate *Isolate)
+
+#if WITH_V8
+V8_EXPORT pesapi_env_ref GetV8PapiEnvRef(v8::Isolate *Isolate)
 {
 #ifdef THREAD_SAFE
     v8::Locker Locker(Isolate);
@@ -93,10 +105,53 @@ V8_EXPORT pesapi_env_ref GetPapiEnvRef(v8::Isolate *Isolate)
     return v8impl::g_pesapi_ffi.create_env_ref(env);
 }
 
-V8_EXPORT pesapi_ffi* GetFFIApi()
+V8_EXPORT pesapi_ffi* GetV8FFIApi()
 {
     return &v8impl::g_pesapi_ffi;
 }
+
+V8_EXPORT pesapi_env_ref GetQjsPapiEnvRef(v8::Isolate *Isolate)
+{
+    return nullptr;
+}
+
+V8_EXPORT pesapi_ffi* GetQjsFFIApi()
+{
+    return nullptr;
+}
+#endif
+
+#if WITH_QUICKJS
+V8_EXPORT pesapi_env_ref GetV8PapiEnvRef(v8::Isolate *Isolate)
+{
+    return nullptr;
+}
+
+V8_EXPORT pesapi_ffi* GetV8FFIApi()
+{
+    return nullptr;
+}
+
+V8_EXPORT pesapi_env_ref GetQjsPapiEnvRef(v8::Isolate *Isolate)
+{
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
+    v8::Isolate::Scope IsolateScope(Isolate);
+    auto jsEnv = puerts::FV8Utils::IsolateData<puerts::JSEngine>(Isolate);
+    v8::HandleScope HandleScope(Isolate);
+    v8::Local<v8::Context> Context = jsEnv->BackendEnv.MainContext.Get(Isolate);
+    v8::Context::Scope ContextScope(Context);
+    
+    auto ctx = Context->context_;
+    return pesapi::qjsimpl::g_pesapi_ffi.create_env_ref(reinterpret_cast<pesapi_env>(ctx));
+}
+
+V8_EXPORT pesapi_ffi* GetQjsFFIApi()
+{
+    return &pesapi::qjsimpl::g_pesapi_ffi;
+}
+#endif
 
 V8_EXPORT pesapi_func_ptr* GetRegsterApi()
 {
@@ -640,6 +695,24 @@ V8_EXPORT void ReturnCSharpFunctionCallback(v8::Isolate* Isolate, const v8::Func
     v8::Context::Scope ContextScope(Context);
 
     Info.GetReturnValue().Set(JsEngine->ToTemplate(Isolate, false, Callback, Data)->GetFunction(Context).ToLocalChecked());
+}
+
+V8_EXPORT void ReturnCSharpFunctionCallback2(v8::Isolate* Isolate, const v8::FunctionCallbackInfo<v8::Value>& Info, puerts::CSharpFunctionCallback Callback, puerts::JsFunctionFinalizeCallback Finalize, int64_t Data)
+{
+    auto JsEngine = FV8Utils::IsolateData<JSEngine>(Isolate);
+#ifdef THREAD_SAFE
+    v8::Locker Locker(Isolate);
+#endif
+    v8::Isolate::Scope IsolateScope(Isolate);
+    v8::HandleScope HandleScope(Isolate);
+    v8::Local<v8::Context> Context = JsEngine->ResultInfo.Context.Get(Isolate);
+    v8::Context::Scope ContextScope(Context);
+
+    auto Func = JsEngine->CreateFunction(Callback, Finalize, Data);
+    if (!Func.IsEmpty())
+    {
+        Info.GetReturnValue().Set(Func.ToLocalChecked());
+    }
 }
 
 V8_EXPORT void ReturnJSObject(v8::Isolate* Isolate, const v8::FunctionCallbackInfo<v8::Value>& Info, puerts::JSObject *Object)

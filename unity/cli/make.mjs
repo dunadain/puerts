@@ -9,6 +9,50 @@ import * as process from "process";
 
 const glob = createRequire(fileURLToPath(import.meta.url))('glob');
 
+function getInstalledVSVersions() {
+   try {
+       const vswherePath = join(
+           process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)',
+           'Microsoft Visual Studio/Installer/vswhere.exe'
+       );
+      
+       const output = exec(`"${vswherePath}" -format json`);
+      
+       return JSON.parse(output);
+   } catch (error) {
+       return [];
+   }
+}
+
+function selectVisualStudioGenerator() {
+   const installedVS = getInstalledVSVersions();
+   
+   if (installedVS.length > 0) {
+      // 版本号排序逻辑（2019优先）
+      const sortedVS = installedVS
+         .map(vs => ({
+             ...vs,
+             majorVersion: parseInt(vs.installationVersion.split('.')[0])
+         }))
+         .sort((a, b) => {
+            // 优先2019（版本16），然后按版本降序
+            if (a.majorVersion === 16) return -1;
+            if (b.majorVersion === 16) return 1;
+            return b.majorVersion - a.majorVersion;
+         });
+      
+      // 映射到CMake生成器名称
+      const versionMap = {
+         15: 'Visual Studio 15 2017',
+         16: 'Visual Studio 16 2019',
+         17: 'Visual Studio 17 2022'
+      };
+      
+      const bestVersion = sortedVS[0].majorVersion;
+      return versionMap[bestVersion] || `Visual Studio ${bestVersion}`;
+   }
+}
+
 const platformCompileConfig = {
     'android': {
         'armv7': {
@@ -108,7 +152,11 @@ const platformCompileConfig = {
                 cd("..");
                 assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code);
 
-                return `${CMAKE_BUILD_PATH}/${options.config}-iphoneos/lib${cmakeAddedLibraryName}.a`;
+                if (options.backend == 'mult') {
+                    return [`${CMAKE_BUILD_PATH}/${options.config}-iphoneos/lib${cmakeAddedLibraryName}.a`, `${CMAKE_BUILD_PATH}/${options.config}-iphoneos/libqjsbackend.a`, `${CMAKE_BUILD_PATH}/${options.config}-iphoneos/libv8backend.a`];
+                } else {
+                    return `${CMAKE_BUILD_PATH}/${options.config}-iphoneos/lib${cmakeAddedLibraryName}.a`;
+                }
             }
         }
     },
@@ -144,8 +192,9 @@ const platformCompileConfig = {
             outputPluginPath: 'x86_64',
             hook: function (CMAKE_BUILD_PATH, options, cmakeAddedLibraryName, cmakeDArgs) {
                 cd(CMAKE_BUILD_PATH);
-                const generator = options.generator || 'Visual Studio 16 2019';
-                assert.equal(0, exec(`cmake ${cmakeDArgs} -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} -G "${generator}" -A x64 ..`).code);
+                const generator = options.generator || selectVisualStudioGenerator();
+                const generatorSelector = generator ? `-G "${generator}"` : ""
+                assert.equal(0, exec(`cmake ${cmakeDArgs} -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} ${generatorSelector} -A x64 ..`).code);
                 cd("..");
                 assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code);
 
@@ -156,8 +205,9 @@ const platformCompileConfig = {
             outputPluginPath: 'x86',
             hook: function (CMAKE_BUILD_PATH, options, cmakeAddedLibraryName, cmakeDArgs) {
                 cd(CMAKE_BUILD_PATH);
-                const generator = options.generator || 'Visual Studio 16 2019';
-                assert.equal(0, exec(`cmake ${cmakeDArgs} -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} -G "${generator}" -A Win32 ..`).code);
+                const generator = options.generator || selectVisualStudioGenerator();
+                const generatorSelector = generator ? `-G "${generator}"` : ""
+                assert.equal(0, exec(`cmake ${cmakeDArgs} -DJS_ENGINE=${options.backend} -DCMAKE_BUILD_TYPE=${options.config} ${generatorSelector} -A Win32 ..`).code);
                 cd("..");
                 assert.equal(0, exec(`cmake --build ${CMAKE_BUILD_PATH} --config ${options.config}`).code);
 
@@ -268,6 +318,10 @@ async function runPuertsMake(cwd, options) {
     if (options.thread_safe) {
         console.log('################################## thread_safe ##################################');
         BackendConfig.definition.push("THREAD_SAFE");
+    }
+    if (options.jitless) {
+        console.log('################################## jitless ##################################');
+        BackendConfig.definition.push("JITLESS");
     }
     const definitionD = (BackendConfig.definition || []).join(';');
     const linkD = (BackendConfig['link-libraries'][options.platform]?.[options.arch] || []).join(';');

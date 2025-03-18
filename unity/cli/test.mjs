@@ -64,6 +64,64 @@ function collectCSFilesAndMakeCompileConfig(dir, workdir, excludeGenerator) {
     return [definitions, linkPuerTS, linkPuerTSCommonJS, linkUnitTests, linkGenerators].join('\n');
 }
 
+function compareVersions(version1, version2) {
+    const v1Parts = version1.split('.').map(Number);
+    const v2Parts = version2.split('.').map(Number);
+
+    for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
+        const v1 = v1Parts[i] || 0;
+        const v2 = v2Parts[i] || 0;
+
+        if (v1 < v2) {
+            return -1;
+        }
+        if (v1 > v2) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+function selectSdk(workdir) {
+    const sdk_list = exec('dotnet --list-sdks');
+    if (sdk_list.code == 0) {
+        const sdkVersions = sdk_list.stdout
+        .split('\n') // 按行分割
+        .filter(line => line.trim() !== '' && /^\d+\.\d+\.\d+/.test(line))
+        .map(line => line.split(' ')[0]) 
+        .filter((value, index, self) => self.indexOf(value) === index);
+        //console.log(sdkVersions);
+        
+        let selectedVersion
+        
+        for (var i = 0; i < sdkVersions.length; ++i) {
+            if(compareVersions(sdkVersions[i], '9.0.0') < 0) {
+                if(!selectedVersion || compareVersions(selectedVersion, sdkVersions[i]) < 0) {
+                    selectedVersion = sdkVersions[i];
+                }
+            }
+        }
+        
+        if (selectedVersion) {
+            console.log(`selected sdk ${selectedVersion}`)
+            
+            const global_cfg = 
+            
+            writeFileSync(
+                join(workdir, 'global.json'),
+                JSON.stringify({
+                  "sdk": {
+                    "version": selectedVersion
+                  }
+                })
+            );
+            return;
+        }
+    }
+    throw new Error('can not find sdk less than 9.0.0');
+}
+
 async function runTest(cwd, copyConfig, runInReflection, filter = '') {
     if (!existsSync(`${cwd}/Src/Helloworld.cs`)) {
         console.error("[Puer] Cannot find UnitTest Src");
@@ -76,6 +134,7 @@ async function runTest(cwd, copyConfig, runInReflection, filter = '') {
     rm("-rf", join(cwd, 'Src/StaticWrapper'));
     
     mkdir("-p", workdir);
+    selectSdk(workdir);
     exec(`dotnet new nunit`, { cwd: workdir });
     rm('-rf', join(workdir, 'UnitTest1.cs'));
     rm('-rf', join(workdir, 'Usings.cs'));
@@ -182,6 +241,9 @@ export async function unityTest(cwd, unityPath) {
     rm("-rf", `${cwd}/build`);
     rm("-rf", `${cwd}/Assets/Gen.meta`);
     rm("-rf", join(cwd, 'Assets/csc.rsp'));
+    writeFileSync(`${cwd}/Assets/csc.rsp`, `
+        -define:PUERTS_DISABLE_IL2CPP_OPTIMIZATION
+    `);
     rm("-rf", join(cwd, '../../Assets/core/upm/Plugins/puerts_il2cpp'));
     console.log("[Puer] Building puerts v1");
     await runPuertsMake(join(cwd, '../../native_src'), {
@@ -205,10 +267,25 @@ export async function unityTest(cwd, unityPath) {
     assert.equal(0, v1code);
 
     console.log("[Puer] Generating FunctionBridge");
+    rm("-rf", join(cwd, 'Assets/csc.rsp'));
     writeFileSync(`${cwd}/Assets/csc.rsp`, `
         -define:PUERTS_CPP_OUTPUT_TO_UPM
         -define:PUERTS_IL2CPP_OPTIMIZATION
     `);
+    
+    console.log('-------------------------Without Wrapper test-------------------------');
+    execUnityEditor(`-executeMethod TestBuilder.GenV2WithoutWrapper`);
+    rm("-rf", `${cwd}/Library/ScriptAssemblies`);
+
+    console.log("[Puer] Building testplayer for v2");
+    mkdir("-p", `${cwd}/build/v2`);
+    execUnityEditor(`-executeMethod TestBuilder.BuildWindowsV2`);
+    console.log("[Puer] Running test in v2");
+    const v2code_reflection = exec(`${cwd}/build/v2/Tester${exeSuffix} -batchmode -nographics -logFile ${cwd}/log2.txt`).code;
+
+    assert.equal(0, v2code_reflection);
+    
+    console.log('-------------------------With Full Wrapper test-------------------------');
     execUnityEditor(`-executeMethod TestBuilder.GenV2`);
     rm("-rf", `${cwd}/Library/ScriptAssemblies`);
 
@@ -216,7 +293,43 @@ export async function unityTest(cwd, unityPath) {
     mkdir("-p", `${cwd}/build/v2`);
     execUnityEditor(`-executeMethod TestBuilder.BuildWindowsV2`);
     console.log("[Puer] Running test in v2");
-    const v2code = exec(`${cwd}/build/v2/Tester${exeSuffix} -batchmode -nographics -logFile ${cwd}/log2.txt`).code;
+    const v2code = exec(`${cwd}/build/v2/Tester${exeSuffix} -batchmode -nographics -logFile ${cwd}/log3.txt`).code;
 
     assert.equal(0, v2code);
+    
+    console.log('-------------------------With Full Wrapper test(quickjs)-------------------------');
+    await runPuertsMake(join(cwd, '../../native_src'), {
+        backend: 'quickjs',
+        platform: platform,
+        config: 'Debug',
+        arch: 'x64',
+        websocket: 1
+    });
+
+    rm("-rf", `${cwd}/Library/ScriptAssemblies`);
+
+    console.log("[Puer] Building testplayer for v2");
+    mkdir("-p", `${cwd}/build/v2`);
+    execUnityEditor(`-executeMethod TestBuilder.BuildWindowsV2`);
+    console.log("[Puer] Running test in v2");
+    const v2code_qjs = exec(`${cwd}/build/v2/Tester${exeSuffix} -batchmode -nographics -logFile ${cwd}/log4.txt`).code;
+    
+    console.log('-------------------------With Full Wrapper test(mult)-------------------------');
+    await runPuertsMake(join(cwd, '../../native_src'), {
+        backend: 'mult',
+        platform: platform,
+        config: 'Debug',
+        arch: 'x64',
+        websocket: 1
+    });
+
+    rm("-rf", `${cwd}/Library/ScriptAssemblies`);
+
+    console.log("[Puer] Building testplayer for v2");
+    mkdir("-p", `${cwd}/build/v2`);
+    execUnityEditor(`-executeMethod TestBuilder.BuildWindowsV2`);
+    console.log("[Puer] Running test in v2");
+    const v2code_mult = exec(`${cwd}/build/v2/Tester${exeSuffix} -batchmode -nographics -logFile ${cwd}/log5.txt`).code;
+
+    assert.equal(0, v2code_mult);
 }

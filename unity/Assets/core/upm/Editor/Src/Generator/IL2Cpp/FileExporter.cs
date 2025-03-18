@@ -15,7 +15,7 @@ using System.Runtime.CompilerServices;
 using Puerts.Editor.Generator;
 using Puerts.TypeMapping;
 
-#if !PUERTS_GENERAL && !UNITY_WEBGL
+#if !PUERTS_GENERAL
 using Mono.Reflection;
 using UnityEngine;
 
@@ -187,7 +187,7 @@ namespace PuertsIl2cpp.Editor
                 }
             }
 
-            public static void GenCPPWrap(string saveTo, bool onlyConfigure = false)
+            public static void GenCPPWrap(string saveTo, bool onlyConfigure = false, bool noWrapper = false)
             {
                 Utils.SetFilters(Puerts.Configure.GetFilters());
                 
@@ -308,7 +308,24 @@ namespace PuertsIl2cpp.Editor
                 var genWrapperMethod = methodToWrap;
                 var genWrapperField = fieldToWrapper;
 
-                if (onlyConfigure)
+                if (noWrapper)
+                {
+                    genWrapperCtor = new ConstructorInfo[] { };
+                    genWrapperMethod = new MethodInfo[] { };
+                    genWrapperField = new FieldInfo[] { };
+
+                    valueTypeInfos = new List<ValueTypeInfo>();
+                    foreach (var type in delegateUsedTypes)
+                    {
+                        IterateAllValueType(type, valueTypeInfos);
+                    }
+
+                    valueTypeInfos = valueTypeInfos
+                        .GroupBy(s => s.Signature)
+                        .Select(s => s.FirstOrDefault())
+                        .ToList();
+                }
+                else if (onlyConfigure)
                 {
                     var configure = Puerts.Configure.GetConfigureByTags(new List<string>() {
                         "Puerts.BindingAttribute",
@@ -583,24 +600,23 @@ namespace PuertsIl2cpp.Editor
 
                 using (var jsEnv = new Puerts.JsEnv())
                 {
-                    var macroHeaderRender = jsEnv.ExecuteModule<Func<bool, bool, bool, string>>("puerts/xil2cpp/unityenv_for_puerts.h.tpl.mjs", "default");
-                    string macroHeaderContent = macroHeaderRender(              
-#if !UNITY_2021_1_OR_NEWER
-                        false,
-#else
-                        true,
+                    var macroHeaderRender = jsEnv.ExecuteModule<Func<List<string>, string>>("puerts/xil2cpp/unityenv_for_puerts.h.tpl.mjs", "default");
+                    var defines = new List<string>()
+                    {
+#if UNITY_2021_1_OR_NEWER
+                        "UNITY_2021_1_OR_NEWER",
 #endif
-#if !UNITY_6000_0_OR_NEWER
-                        false,
-#else
-                        true,
+#if UNITY_2022_1_OR_NEWER
+                        "UNITY_2022_1_OR_NEWER",
 #endif
-#if UNITY_IPHONE
-                        false
-#else
-                        true
+#if UNITY_6000_0_OR_NEWER
+                        "UNITY_6000_0_OR_NEWER",
 #endif
-                    );
+#if !UNITY_IPHONE && !UNITY_WEBGL
+                        "PUERTS_SHARED",
+#endif
+                    };
+                    string macroHeaderContent = macroHeaderRender(defines);
 
                     using (StreamWriter textWriter = new StreamWriter(filePath, false, Encoding.UTF8))
                     {

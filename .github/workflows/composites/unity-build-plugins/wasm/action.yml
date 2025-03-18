@@ -1,4 +1,4 @@
-name: build linux unity plugin
+name: build wasm unity plugin
 
 inputs:
   backend:
@@ -43,10 +43,10 @@ runs:
         cd ../${{ inputs.build_proj_dir }}
         node ../cli make --platform wasm --arch wasm32 --backend quickjs --config ${{ inputs.config }}
     - name: Upload
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ./unity/Assets/core/upm/Plugins/**/*
-        name: Unity_Plugins (${{ inputs.backend }}_${{ inputs.config }})
+        name: Unity_Plugins_${{ inputs.backend }}_${{ inputs.config }}_wasm
     - name: Clean
       shell: bash
       run: rm -rf ./unity/Assets/core/upm/Plugins/**/*

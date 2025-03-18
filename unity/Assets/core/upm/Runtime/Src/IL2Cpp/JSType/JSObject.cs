@@ -6,7 +6,7 @@
 */
 
 #if UNITY_2020_1_OR_NEWER
-#if PUERTS_IL2CPP_OPTIMIZATION && ENABLE_IL2CPP
+#if (!PUERTS_DISABLE_IL2CPP_OPTIMIZATION && !UNITY_WEBGL && !UNITY_IPHONE || PUERTS_IL2CPP_OPTIMIZATION) && ENABLE_IL2CPP
 
 using System;
 using System.Runtime.CompilerServices;
@@ -33,7 +33,7 @@ namespace Puerts
 
         ~JSObject()
         {
-            PuertsIl2cpp.NativeAPI.AddPendingKillScriptObjects(apis, nativeJsEnv, valueRef);
+            Puerts.NativeAPI.AddPendingKillScriptObjects(apis, nativeJsEnv, valueRef);
         }
     }
 }

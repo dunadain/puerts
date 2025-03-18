@@ -69,8 +69,8 @@ class WebSocket extends EventTarget {
             this._cleanup();
             this._addPendingEvent({type:'close', code:code, reason: reason});
         }, 
-        () => {
-            this._fail();
+        (err) => {
+            this._fail(err);
         });
         
         this._readyState = WebSocket.CONNECTING;
@@ -83,26 +83,32 @@ class WebSocket extends EventTarget {
     }
     
     get readyState() {
+        if (this._readyState === WebSocket.OPEN) {
+            const [statue, message] = this._raw.statue();
+            if (statue != 0) {
+                this._fail(`${message}[${statue}]`);
+            }
+        }
         return this._readyState;
     }
     
     send(data) {
         if (this._readyState !== WebSocket.OPEN) {
             //throw new Error(`WebSocket is not open: readyState ${this._readyState} (${readyStates[this._readyState]})`);
-            this.dispatchEvent({type:'error'}); //dispatchEvent immediately
+            this.dispatchEvent({type:'error', data: `WebSocket is not open: readyState ${this._readyState} (${readyStates[this._readyState]})`}); //dispatchEvent immediately
             return;
         }
         try {
             this._raw.send(data);
-        } catch {
-            this._fail();
+        } catch (e) {
+            this._fail(e.message);
         }
     }
     
-    _fail() {
-        this._addPendingEvent({type:'error'});
+    _fail(err) {
+        this._addPendingEvent({type:'error', data: err});
         this._cleanup();
-        this._addPendingEvent({type:'close', code:1006, reason: ""});
+        this._addPendingEvent({type:'close', code:1006, reason: err});
     }
     
     _cleanup() {
@@ -130,7 +136,9 @@ class WebSocket extends EventTarget {
     close(code, data) {
         try {
             this._raw.close(code, data);
-        } catch(e) {}
+        } catch(e) {
+            this.dispatchEvent({type:'error', data: e.message}); //dispatchEvent immediately
+        }
         this._cleanup();
     }
     

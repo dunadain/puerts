@@ -8,14 +8,24 @@ using UnityEditor;
 using UnityEditor.Build.Reporting;
 public class TestBuilder 
 {
+#if PUERTS_DISABLE_IL2CPP_OPTIMIZATION
     public static void GenV1() 
     {
         Puerts.Editor.Generator.UnityMenu.GenerateCode();
     }
     [MenuItem("PuerTS/Tester/BuildV1")]
     public static void BuildWindowsV1() { BuildWindows(false); }
+#endif
 
-#if PUERTS_IL2CPP_OPTIMIZATION
+#if !PUERTS_DISABLE_IL2CPP_OPTIMIZATION
+    public static void GenV2WithoutWrapper() 
+    {
+        PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateEmptyCppWrappers();
+        PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateExtensionMethodInfos();
+        PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateLinkXML();
+        PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateCppPlugin();
+        Puerts.Editor.Generator.UnityMenu.GenRegisterInfo();
+    }
     public static void GenV2() 
     {
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateCppWrappers();
