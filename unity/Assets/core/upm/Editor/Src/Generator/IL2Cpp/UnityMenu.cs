@@ -35,7 +35,7 @@ namespace PuertsIl2cpp.Editor
             [MenuItem(Puerts.Editor.Generator.UnityMenu.PUERTS_MENU_PREFIX + "/Generate For xIl2cpp mode (all in one with full wrapper)", false, 3)]
             public static void GenV2()
             {
-                GenerateCppWrappers();
+                GenerateCppWrappersInConfigure();
                 GenerateExtensionMethodInfos();
                 GenerateLinkXML();
                 GenerateCppPlugin();
