@@ -25,9 +25,15 @@ var exportDLL = {
             stackAlloc,
             stackSave,
             stackRestore,
+            getWasmTableEntry,
+            addFunction,
+            removeFunction,
             _CallCSharpFunctionCallback: Module._CallCSharpFunctionCallback,
             _CallCSharpConstructorCallback: Module._CallCSharpConstructorCallback,
             _CallCSharpDestructorCallback: Module._CallCSharpDestructorCallback,
+            InjectPapiGLNativeImpl: Module._InjectPapiGLNativeImpl,
+            PApiCallbackWithScope: Module._PApiCallbackWithScope,
+            PApiConstructorWithScope: Module._PApiConstructorWithScope,
             
             HEAP8,
             HEAPU8,
@@ -133,6 +139,18 @@ var exportDLL = {
     "InspectorTick",
     "LogicTick",
     "SetLogCallback",
+    "GetWebGLFFIApi",
+    "GetWebGLPapiEnvRef",
+    "GetQjsFFIApi", // declare for compile
+    "GetQjsPapiEnvRef", // declare for compile
+    "GetRegsterApi",
+    "pesapi_alloc_property_descriptors",
+    "pesapi_define_class",
+    "pesapi_get_class_data",
+    "pesapi_on_class_not_found",
+    "pesapi_set_method_info",
+    "pesapi_set_property_info",
+    "pesapi_trace_native_object_lifecycle"
 ].forEach(function (methodName) {
 
     exportDLL[methodName] = new Function(

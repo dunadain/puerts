@@ -159,6 +159,18 @@ namespace Puerts
                 throw;
             }
         }
+
+        
+#if UNITY_WEBGL
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr GetWebGLFFIApi();
+        
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr GetWebGLPapiEnvRef(IntPtr isolate);
+        
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void PreservePuertsCPP();
+#endif
 #endif
     }
 
@@ -217,8 +229,8 @@ namespace Puerts
     public delegate int pesapi_get_args_len_func(IntPtr info);
     public delegate IntPtr pesapi_get_arg_func(IntPtr info, int index);
     public delegate IntPtr pesapi_get_env_func(IntPtr info);
-    public delegate IntPtr pesapi_get_this_func(IntPtr info);
-    public delegate IntPtr pesapi_get_holder_func(IntPtr info);
+    public delegate IntPtr pesapi_get_native_holder_ptr_func(IntPtr info);
+    public delegate IntPtr pesapi_get_native_holder_typeid_func(IntPtr info);
     public delegate IntPtr pesapi_get_userdata_func(IntPtr info);
     public delegate void pesapi_add_return_func(IntPtr info, IntPtr value);
     public delegate void pesapi_throw_by_string_func(IntPtr pinfo, string msg);
@@ -307,8 +319,8 @@ namespace Puerts
         public pesapi_get_args_len_func get_args_len;
         public pesapi_get_arg_func get_arg;
         public pesapi_get_env_func get_env;
-        public pesapi_get_this_func get_this;
-        public pesapi_get_holder_func get_holder;
+        public pesapi_get_native_holder_ptr_func get_native_holder_ptr;
+        public pesapi_get_native_holder_typeid_func get_native_holder_typeid;
         public pesapi_get_userdata_func get_userdata;
         public pesapi_add_return_func add_return;
         public pesapi_throw_by_string_func throw_by_string;

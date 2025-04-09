@@ -159,6 +159,11 @@ extern "C"
     {
         functionPtr(selfPtr, (int64_t)callbackIdx << 32);
     }
+    
+    //为了避免没有引用而被剪裁
+    void PreservePuertsCPP()
+    {
+    }
 }
 
 #endif
