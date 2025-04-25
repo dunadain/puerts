@@ -15,17 +15,23 @@ var exportDLL = {
                 HEAPF64
             );
         }
+
         global.PuertsWebGL.Init({
             UTF8ToString,
+            UTF16ToString,
             _malloc,
             _free,
             _setTempRet0,
             stringToUTF8,
             lengthBytesUTF8,
+            stringToUTF16,
+            lengthBytesUTF16,
             stackAlloc,
             stackSave,
             stackRestore,
-            getWasmTableEntry,
+            getWasmTableEntry: (typeof getWasmTableEntry != 'undefined') ? getWasmTableEntry : function(funcPtr) {
+                return wasmTable.get(funcPtr);
+            },
             addFunction,
             removeFunction,
             _CallCSharpFunctionCallback: Module._CallCSharpFunctionCallback,

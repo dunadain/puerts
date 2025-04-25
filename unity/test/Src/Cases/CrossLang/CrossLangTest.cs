@@ -212,7 +212,7 @@ namespace Puerts.UnitTest
 
         public TestHelper()
         {
-#if UNITY_EDITOR || PUERTS_DISABLE_IL2CPP_OPTIMIZATION || (!PUERTS_IL2CPP_OPTIMIZATION && (UNITY_WEBGL || UNITY_IPHONE))
+#if UNITY_EDITOR || PUERTS_DISABLE_IL2CPP_OPTIMIZATION || (!PUERTS_IL2CPP_OPTIMIZATION && UNITY_IPHONE)
             var env = UnitTestEnv.GetEnv();
             env.UsingFunc<int>();
             env.UsingFunc<int, int>();
@@ -302,6 +302,12 @@ namespace Puerts.UnitTest
             AssertAndPrint("CSGetStringReturnFromJS", JSValueHandler(initialValue + "d"), "abcde");
             outArg = "abcdef";
             return "abcdefg";
+        }
+
+        public string UnicodeStr(string str)
+        {
+            AssertAndPrint("UnicodeStr", str, "你好");
+            return "小马哥";
         }
 
         public string PassStr(string str)
@@ -778,6 +784,8 @@ namespace Puerts.UnitTest
                     TestHelper.stringTestFieldStatic = 'Puer'
                     TestHelper.stringTestPropStatic = 'Puer'
                     testHelper.StringTestCheckMemberValue();
+                    const ustr = testHelper.UnicodeStr('你好');
+                    assertAndPrint('UnicodeStr', ustr, '小马哥');
                 })()
             ");
             jsEnv.Tick();
