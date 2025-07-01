@@ -111,6 +111,9 @@ namespace Puerts
         public static extern void DestroyJSEngine(IntPtr isolate);
 
         [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void TerminateExecution(IntPtr isolate);
+
+        [DllImport(DLLNAME, CallingConvention = CallingConvention.Cdecl)]
         public static extern void SetGlobalFunction(IntPtr isolate, string name, IntPtr v8FunctionCallback, long data);
 
         public static void SetGlobalFunction(IntPtr isolate, string name, V8FunctionCallback v8FunctionCallback, long data)
@@ -662,5 +665,10 @@ namespace Puerts
             IntPtr str = GetJSStackTrace(isolate, out strlen);
             return GetStringFromNative(str, strlen);
         }
+
+#if !UNITY_EDITOR && UNITY_WEBGL
+        [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr InitPuertsWebGL();
+#endif
     }
 }

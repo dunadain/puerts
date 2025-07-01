@@ -13,13 +13,24 @@ on:
       - unreal/Puerts/Source/JsEnv/Private/WebSocketImpl.cpp
       - unreal/Puerts/Source/JsEnv/Private/PromiseRejectCallback.hpp
       - .github/workflows/unity_unittest.yml
+  pull_request:
+    paths: 
+      - unity/Assets/**
+      - unity/test/**
+      - unity/native_src/**
+      - unity/cli/**
+      - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.cpp
+      - unreal/Puerts/Source/JsEnv/Private/V8InspectorImpl.h
+      - unreal/Puerts/Source/JsEnv/Private/WebSocketImpl.cpp
+      - unreal/Puerts/Source/JsEnv/Private/PromiseRejectCallback.hpp
+      - .github/workflows/unity_unittest.yml
   
 env:
   RUNID: 613573412
 
 jobs:
   unittest-win-unity:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v3
@@ -89,7 +100,7 @@ jobs:
 #          cat log2.txt | grep "Failed\|Passed" 
 
   unittest-win-dotnet:
-    runs-on: windows-2019
+    runs-on: windows-2022
     steps:
       - uses: actions/setup-dotnet@v3
         with:

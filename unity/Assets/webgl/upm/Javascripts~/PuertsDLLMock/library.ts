@@ -527,10 +527,7 @@ export namespace PuertsJSEngine {
         _CallCSharpDestructorCallback: (functionPtr: IntPtr, selfPtr: CSIdentifier, callbackIdx: number) => void;
         PApiCallbackWithScope: (nativeCallback:number, ffi: number, info: number) => void;
         PApiConstructorWithScope: (nativeCallback:number, ffi: number, info: number) => number;
-        WasmAdd: (a: number, b: number) => number;
-        IndirectWasmAdd: (func: number, a: number, b: number) => number;
-        GetWasmAddPtr:() => number;
-        InjectPapiGLNativeImpl: (apiPtr: number) => void;
+        InjectPapiGLNativeImpl: () => number;
         HEAP8: Int8Array;
         HEAPU8: Uint8Array;
         HEAP32: Int32Array;
@@ -580,9 +577,6 @@ export class PuertsJSEngine {
             InjectPapiGLNativeImpl,
             PApiCallbackWithScope,
             PApiConstructorWithScope,
-            WasmAdd,
-            IndirectWasmAdd,
-            GetWasmAddPtr,
             HEAP8,
             HEAPU8,
             HEAP32,
@@ -614,9 +608,6 @@ export class PuertsJSEngine {
             InjectPapiGLNativeImpl,
             PApiCallbackWithScope,
             PApiConstructorWithScope,
-            WasmAdd,
-            IndirectWasmAdd,
-            GetWasmAddPtr,
 
             HEAP8,
             HEAPU8,

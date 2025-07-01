@@ -31,6 +31,12 @@ namespace Puerts
         IntPtr nativeJsEnv;
         IntPtr nativePesapiEnv;
         IntPtr nativeScriptObjectsRefsMgr;
+        
+        internal IntPtr isolate {
+            get {
+                return nativeJsEnv;
+            }
+        }
 
         private Func<string, JSObject> moduleExecutor;
 
@@ -62,6 +68,9 @@ namespace Puerts
             disposed = true;
             if (!isInitialized)
             {
+#if !UNITY_EDITOR && UNITY_WEBGL
+                PuertsDLL.InitPuertsWebGL();
+#endif
                 lock (jsEnvs)
                 {
                     if (!isInitialized)
@@ -150,9 +159,11 @@ namespace Puerts
             if (debugPort != -1) {
                 Puerts.PuertsDLL.CreateInspector(nativeJsEnv, debugPort);    
             }
+#if !UNITY_WEBGL
             string debugpath;
             string context = loader.ReadFile("puerts/esm_bootstrap.cjs", out debugpath);
             Eval(context, debugpath);
+#endif
             ExecuteModule("puerts/init_il2cpp.mjs");
             ExecuteModule("puerts/log.mjs");
             ExecuteModule("puerts/csharp.mjs");
@@ -197,7 +208,7 @@ namespace Puerts
         }
         
         [MonoPInvokeCallback(typeof(Puerts.NativeAPI.LogCallback))]
-        private static void LogCallback(string msg)
+        public static void LogCallback(string msg)
         {
 #if PUERTS_GENERAL || (UNITY_WSA && !UNITY_EDITOR)
 #else
@@ -206,7 +217,7 @@ namespace Puerts
         }
 
         [MonoPInvokeCallback(typeof(Puerts.NativeAPI.LogCallback))]
-        private static void LogWarningCallback(string msg)
+        public static void LogWarningCallback(string msg)
         {
 #if PUERTS_GENERAL || (UNITY_WSA && !UNITY_EDITOR)
 #else
@@ -215,7 +226,7 @@ namespace Puerts
         }
 
         [MonoPInvokeCallback(typeof(Puerts.NativeAPI.LogCallback))]
-        private static void LogErrorCallback(string msg)
+        public static void LogErrorCallback(string msg)
         {
 #if PUERTS_GENERAL || (UNITY_WSA && !UNITY_EDITOR)
 #else

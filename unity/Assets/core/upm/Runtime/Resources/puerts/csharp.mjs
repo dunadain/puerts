@@ -26,6 +26,7 @@ function csTypeToClass(csType) {
 
         let readonlyStaticMembers;
         if (readonlyStaticMembers = cls.__puertsMetadata.get('readonlyStaticMembers')) {
+            cls.__puertsMetadata.set('readonlyStaticMembers', undefined);
             for (var key in cls) {
                 let desc = Object.getOwnPropertyDescriptor(cls, key);
                 if (readonlyStaticMembers.has(key) && desc && (typeof desc.get) == 'function' && (typeof desc.value) == 'undefined') {
@@ -33,21 +34,23 @@ function csTypeToClass(csType) {
                     let value;
                     let valueGetted = false;
     
-                    Object.defineProperty(
-                        cls, key, 
-                        Object.assign(desc, {
-                            get() {
-                                if (!valueGetted) {
-                                    value = getter();
-                                    valueGetted = true;
-                                }
-                                
-                                return value;
-                            },
-                            configurable: false
-                        })
-                    );
-                    if (cls.__p_isEnum) {
+                    if (desc.configurable) {
+                        Object.defineProperty(
+                            cls, key, 
+                            Object.assign(desc, {
+                                get() {
+                                    if (!valueGetted) {
+                                        value = getter();
+                                        valueGetted = true;
+                                    }
+                                    
+                                    return value;
+                                },
+                                configurable: false
+                            })
+                        );
+                    }
+                    if (cls.__p_innerType.IsEnum) {
                         const val = cls[key];
                         if ((typeof val) == 'number') {
                             cls[val] = key;
@@ -173,9 +176,26 @@ function makeGeneric(genericTypeInfo, ...genericArgs) {
 
         let typName = genericTypeInfo.get('$name')
         let typ = puer.loadType(typName, ...genericArgs)
-        if (getType(csharpModule.System.Collections.IEnumerable).IsAssignableFrom(getType(typ))) {
+        let csType =  getType(typ)
+        if (getType(csharpModule.System.Collections.IEnumerable).IsAssignableFrom(csType)) {
             typ.prototype[Symbol.iterator] = function () {
                 return genIterator(this);
+            }
+        }
+        
+        let nestedTypes = puer.getNestedTypes(csType);
+        if (nestedTypes) {
+            for(var i = 0; i < nestedTypes.Length; i++) {
+                let ntype = nestedTypes.get_Item(i);
+                if (ntype.IsGenericTypeDefinition) {
+                    genericArgs = genericArgs.map(g => puer.$typeof(g) || g);
+                    ntype = ntype.MakeGenericType(...genericArgs);
+                }
+                try {
+                    typ[ntype.Name] = csTypeToClass(ntype);
+                } catch (e) {
+                    console.warn(`load nestedtype [${ntype.Name || ntype}] of ${csType.Name || csType} fail: ${e}`);
+                }
             }
         }
         p.set('$type', typ);
@@ -192,8 +212,15 @@ function makeGenericMethod(cls, methodName, ...genericArgs) {
     }
 }
 
-function getType(cls) {
+function slowGetType(cls) {
+    if (cls.hasOwnProperty("__p_typeId")) {
+        cls.__p_innerType =  getCSTypeById(cls.__p_typeId);
+    }
     return cls.__p_innerType;
+}
+
+function getType(cls) {
+    return cls.__p_innerType || slowGetType(cls);
 }
 
 function bindThisToFirstArgument(func, parentFunc) {

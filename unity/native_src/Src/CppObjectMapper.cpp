@@ -23,7 +23,7 @@ static void ThrowException(v8::Isolate* Isolate, const char* Message)
     Isolate->ThrowException(v8::Exception::Error(ExceptionStr));
 }
 
-void FCppObjectMapper::LoadCppType(const v8::FunctionCallbackInfo<v8::Value>& Info)
+void FCppObjectMapper::findClassByName(const v8::FunctionCallbackInfo<v8::Value>& Info)
 {
     v8::Isolate* Isolate = Info.GetIsolate();
     v8::Isolate::Scope IsolateScope(Isolate);
@@ -75,6 +75,20 @@ void FCppObjectMapper::Initialize(v8::Isolate* InIsolate, v8::Local<v8::Context>
 #ifndef WITH_QUICKJS
     PrivateKey.Reset(InIsolate, v8::Symbol::New(InIsolate));
 #endif
+
+    v8::Local<v8::Context> Context = InIsolate->GetCurrentContext();
+    auto This = v8::External::New(InIsolate, this);
+    Context->Global()->Set(Context, v8::String::NewFromUtf8(InIsolate, "findClassByName").ToLocalChecked(),
+    v8::FunctionTemplate::New(
+        InIsolate,
+        [](const v8::FunctionCallbackInfo<v8::Value>& Info)
+        {
+            auto Self = static_cast<FCppObjectMapper*>((v8::Local<v8::External>::Cast(Info.Data()))->Value());
+            Self->findClassByName(Info);
+        },
+        This)->GetFunction(Context)
+        .ToLocalChecked())
+        .Check();
 }
 
 v8::Local<v8::Value> FCppObjectMapper::FindOrAddCppObject(
@@ -260,7 +274,7 @@ v8::Local<v8::FunctionTemplate> FCppObjectMapper::GetTemplateOfClass(v8::Isolate
         PropertyInfo = ClassDefinition->Variables;
         while (PropertyInfo && PropertyInfo->Name)
         {
-            v8::PropertyAttribute PropertyAttribute = v8::DontDelete;
+            v8::PropertyAttribute PropertyAttribute = v8::None;
             if (!PropertyInfo->Setter)
                 PropertyAttribute = (v8::PropertyAttribute)(PropertyAttribute | v8::ReadOnly);
             auto GetterData = v8::External::New(Isolate, &PropertyInfo->GetterData);
@@ -329,6 +343,8 @@ v8::Local<v8::FunctionTemplate> FCppObjectMapper::GetTemplateOfClass(v8::Isolate
             }
             ++FunctionInfo;
         }
+        
+        Template->Set(v8::String::NewFromUtf8(Isolate, "__p_typeId", v8::NewStringType::kNormal).ToLocalChecked(), v8::BigInt::New(Isolate, (intptr_t)ClassDefinition->TypeId));
 
         if (ClassDefinition->SuperTypeId)
         {
