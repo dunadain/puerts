@@ -31,11 +31,12 @@ program
             .default("Release")
             .choices(["Release", "Debug"])
     )
-    .option("--backend <backend>", "the JS backend will be used", "v8_9.4")
+    .option("--backend <backend>", "the JS backend will be used")
     .option('--rebuild', 'clean and rebuild')
     .option('-ws, --websocket <number>', 'with websocket support')
     .option('-G, --generator <generator-name>', 'cmake generator name')
     .option('-ts, --thread_safe', 'thread safe')
+	.option('-egc, --expose_gc', 'expose gc')
     .option('-wi, --with_inspector', 'with inspector')
     .option('-jl, --jitless', 'jitless')
     .option('--with_symbols', 'generate symbol file for debug')
@@ -145,10 +146,14 @@ program
     .command("dotnet-test [backend]")
     .option("--filter <filter>", "testcase will be filtered", "")
     .option('-sq, --switch_qjs', 'switch to quickjs backend')
+    .option('-sn, --switch_njs', 'switch to nodejs backend')
     .option('-ts, --thread_safe', 'thread safe')
     .action((backend, options) => {
         if (options.switch_qjs) {
             process.env.SwitchToQJS = '1';
+        }
+        if (options.switch_njs) {
+            process.env.SwitchToNJS = '1';
         }
         dotnetTest(cwd, backend || "quickjs", options.filter, options.thread_safe);
     });

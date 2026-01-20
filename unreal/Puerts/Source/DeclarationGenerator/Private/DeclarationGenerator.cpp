@@ -1,6 +1,6 @@
 ﻿/*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -60,7 +60,7 @@ bool bSearchAllPluginBP = true;
 static FAutoConsoleVariableRef CVarSearchAllPluginBP(TEXT("bSearchAllPluginBP"), bSearchAllPluginBP, TEXT(".\n"), ECVF_Default);
 
 #if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 5
-#define GET_VERSION_ID(PD) LexToString(PD->CookedHash)
+#define GET_VERSION_ID(PD) LexToString(PD->GetPackageSavedHash())
 #else
 #define GET_VERSION_ID(PD) PD->PackageGuid.ToString()
 #endif
@@ -415,10 +415,15 @@ void FTypeScriptDeclarationGenerator::GenTypeScriptDeclaration(bool InGenStruct,
     End();
 
     IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-    PlatformFile.CopyDirectoryTree(*(FPaths::ProjectDir() / TEXT("Typing")),
-        *(IPluginManager::Get().FindPlugin("Puerts")->GetBaseDir() / TEXT("Typing")), false);
-    PlatformFile.CopyDirectoryTree(*(FPaths::ProjectContentDir() / TEXT("JavaScript")),
-        *(IPluginManager::Get().FindPlugin("Puerts")->GetBaseDir() / TEXT("Content") / TEXT("JavaScript")), true);
+    // 删除旧版本提交到Plugin的ue/ue_bp d.ts 避免残留污染编译
+    FString PuertsBaseDir = IPluginManager::Get().FindPlugin("Puerts")->GetBaseDir();
+    PlatformFile.DeleteFile(*(PuertsBaseDir / TEXT("Typing/ue/ue.d.ts")));
+    PlatformFile.DeleteFile(*(PuertsBaseDir / TEXT("Typing/ue/ue_bp.d.ts")));
+
+    FString ProjectTypingDir = (FPaths::ProjectDir() / TEXT("Typing"));
+    PlatformFile.CopyDirectoryTree(*ProjectTypingDir, *(PuertsBaseDir / TEXT("Typing")), false);
+    PlatformFile.CopyDirectoryTree(
+        *(FPaths::ProjectContentDir() / TEXT("JavaScript")), *(PuertsBaseDir / TEXT("Content") / TEXT("JavaScript")), true);
 
     const FString UEDeclarationFilePath = FPaths::ProjectDir() / TEXT("Typing/ue/ue.d.ts");
 
@@ -1610,16 +1615,7 @@ private:
     void GenUeDts(bool InGenFull, FName InSearchPath)
     {
         GenTypeScriptDeclaration(InGenFull, InSearchPath);
-
-        TArray<UObject*> SortedClasses(GetSortedClasses());
-        for (int i = 0; i < SortedClasses.Num(); ++i)
-        {
-            UClass* Class = Cast<UClass>(SortedClasses[i]);
-            if (Class && Class->ImplementsInterface(UCodeGenerator::StaticClass()))
-            {
-                ICodeGenerator::Execute_Gen(Class->GetDefaultObject());
-            }
-        }
+        GenTypeScriptCppDeclaration();
 
         FName PackagePath = (InSearchPath == NAME_None) ? FName(TEXT("/Game")) : InSearchPath;
 
@@ -1678,7 +1674,7 @@ public:
 
                     for (auto& Arg : Args)
                     {
-                        if (Arg.ToUpper().Equals(TEXT("FULL")))
+                        if (Arg.ToUpper().Contains(TEXT("FULL")))
                         {
                             GenFull = true;
                         }
@@ -1707,6 +1703,19 @@ public:
         TypeScriptDeclarationGenerator.RestoreBlueprintTypeDeclInfos(InGenFull);
         TypeScriptDeclarationGenerator.LoadAllWidgetBlueprint(InSearchPath, InGenFull);
         TypeScriptDeclarationGenerator.GenTypeScriptDeclaration(true, true);
+    }
+
+    virtual void GenTypeScriptCppDeclaration() override
+    {
+        TArray<UObject*> SortedClasses(GetSortedClasses());
+        for (int i = 0; i < SortedClasses.Num(); ++i)
+        {
+            UClass* Class = Cast<UClass>(SortedClasses[i]);
+            if (Class && Class->ImplementsInterface(UCodeGenerator::StaticClass()))
+            {
+                ICodeGenerator::Execute_Gen(Class->GetDefaultObject());
+            }
+        }
     }
 
     void GenReactDeclaration() override

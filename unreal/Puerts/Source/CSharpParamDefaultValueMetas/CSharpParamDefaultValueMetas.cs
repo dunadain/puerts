@@ -1,6 +1,6 @@
 /*
 * Tencent is pleased to support the open source community by making Puerts available.
-* Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+* Copyright (C) 2020 Tencent.  All rights reserved.
 * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may be subject to their corresponding license terms.
 * This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this source code package.
 */
@@ -90,7 +90,7 @@ namespace CSharpParamDefaultValueMetas
             Action declareOnce = () => {
                 if (!declared)
                 {
-                    GeneratedContentBuilder.AppendFormat("PC = &ParamDefaultMetas.Add(TEXT(\"{0}\"));\r\n", uhtClass.EngineName);
+                    GeneratedContentBuilder.AppendFormat("__PC = &ParamDefaultMetas.Add(TEXT(\"{0}\"));\r\n", uhtClass.EngineName);
                     declared = true;
                 }
             };
@@ -137,7 +137,7 @@ namespace CSharpParamDefaultValueMetas
                     declareClassOnce();
                     if (!declared)
                     {
-                        GeneratedContentBuilder.AppendFormat("PF = &PC->Add(TEXT(\"{0}\"));\r\n", uhtFunction.SourceName);
+                        GeneratedContentBuilder.AppendFormat("__PF = &__PC->Add(TEXT(\"{0}\"));\r\n", uhtFunction.SourceName);
                         declared = true;
                     }
                     
@@ -146,7 +146,7 @@ namespace CSharpParamDefaultValueMetas
                     {
                         escapeDefaultValue = escapeDefaultValue.Replace("true", "True").Replace("false", "False");
                     }
-                    GeneratedContentBuilder.AppendFormat("PF->Add(TEXT(\"{0}\"), TEXT(\"{1}\"));\r\n", property.SourceName, escapeDefaultValue);
+                    GeneratedContentBuilder.AppendFormat("__PF->Add(TEXT(\"{0}\"), TEXT(\"{1}\"));\r\n", property.SourceName, escapeDefaultValue);
                 }
             }
         }

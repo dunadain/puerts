@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -18,8 +18,8 @@ struct Converter<std::function<R(Args...)>>
     {
         if (API::IsNullOrUndefined(context, value))
             return nullptr;
-        Function PF(context, value);
-        return [=](Args... cppArgs) -> R { return PF.Func<R>(cppArgs...); };
+        Function _Func(context, value);
+        return [=](Args... cppArgs) -> R { return _Func.Func<R>(cppArgs...); };
     }
 
     static bool accept(API::ContextType context, const API::ValueType value)

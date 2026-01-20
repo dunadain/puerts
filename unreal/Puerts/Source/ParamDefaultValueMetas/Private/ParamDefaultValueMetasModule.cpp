@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -99,7 +99,7 @@ public:
                     }
                     MakesureFunctinMeteExisted(Class, Function);
                     GeneratedFileContent +=
-                        FString::Printf(TEXT("PF->Add(TEXT(\"%s\"), TEXT(\"%s\"));\r\n"), *Property->GetName(), *EscapeValue);
+                        FString::Printf(TEXT("__PF->Add(TEXT(\"%s\"), TEXT(\"%s\"));\r\n"), *Property->GetName(), *EscapeValue);
                 }
             }
         }
@@ -142,12 +142,12 @@ private:
     {
         if (!ClassDefGened)
         {
-            GeneratedFileContent += FString::Printf(TEXT("PC = &ParamDefaultMetas.Add(TEXT(\"%s\"));\r\n"), *InClass->GetName());
+            GeneratedFileContent += FString::Printf(TEXT("__PC = &ParamDefaultMetas.Add(TEXT(\"%s\"));\r\n"), *InClass->GetName());
             ClassDefGened = true;
         }
         if (!FuncDefGened)
         {
-            GeneratedFileContent += FString::Printf(TEXT("PF = &PC->Add(TEXT(\"%s\"));\r\n"), *InFunction->GetName());
+            GeneratedFileContent += FString::Printf(TEXT("__PF = &__PC->Add(TEXT(\"%s\"));\r\n"), *InFunction->GetName());
             FuncDefGened = true;
         }
     }

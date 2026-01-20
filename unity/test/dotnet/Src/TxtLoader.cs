@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Reflection;
 using System.Collections.Generic;
@@ -15,9 +16,9 @@ public class TxtLoader : IResolvableLoader,  ILoader, IModuleChecker
             appendix
         );
     }
-    private string root = PathToBinDir("../../../../../Assets/core/upm/Runtime/Resources");
-    private string commonjsRoot = PathToBinDir("../../../../../Assets/commonjs/upm/Runtime/Resources");
-    private string editorRoot = PathToBinDir("../../../../../Assets/core/upm/Editor/Resources");
+    private string root = PathToBinDir("../../../../../upms/core/Runtime/Resources");
+    private string commonjsRoot = PathToBinDir("../../../../../upms/commonjs/Runtime/Resources");
+    private string editorRoot = PathToBinDir("../../../../../upms/core/Editor/Resources");
     private string unittestRoot = PathToBinDir("../../../../Src/Resources");
     
     public bool IsESM(string filepath)
@@ -139,7 +140,7 @@ namespace Puerts.UnitTest
 {
     public class UnitTestEnv
     {
-        private static JsEnv env;
+        private static ScriptEnv env;
         private static TxtLoader loader;
 
         UnitTestEnv() { }
@@ -149,25 +150,27 @@ namespace Puerts.UnitTest
             if (env == null) 
             {
                 loader = new TxtLoader();
+                Backend backend = null;
                 if (System.Environment.GetEnvironmentVariable("SwitchToQJS") == "1")
                 {
-                    System.Console.Write("---------------------SwitchToQJS------------------------\n");
-                    env = new JsEnv(loader, -1, BackendType.QuickJS, System.IntPtr.Zero, System.IntPtr.Zero);
+                    backend = new Puerts.BackendQuickJS(loader);
                 }
-                else
+                else if (System.Environment.GetEnvironmentVariable("SwitchToNJS") == "1")
                 {
-                    System.Console.Write("---------------------Default JsEnv------------------------\n");
-                    env = new JsEnv(loader);
+                    backend = new Puerts.BackendNodeJS(loader);
                 }
+                if (backend == null)
+                {
+                    backend = new Puerts.BackendV8(loader);
+                }
+                System.Console.WriteLine($"---------------------Backend: {backend.GetType().Name}------------------------\n");
+                env = new ScriptEnv(backend);
                 
                 CommonJS.InjectSupportForCJS(env);
-#if PUERTS_GENERAL && !TESTING_REFLECTION
-                PuertsStaticWrap.PuerRegisterInfo_Gen.AddRegisterInfoGetterIntoJsEnv(env);
-#endif
             }
         }
 
-        public static JsEnv GetEnv() 
+        public static ScriptEnv GetEnv() 
         {
             if (env == null) Init();
             return env;

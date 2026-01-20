@@ -1,6 +1,6 @@
 ﻿/*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -79,6 +79,14 @@ static void FText_Format(const v8::FunctionCallbackInfo<v8::Value>& Info)
 
     Info.GetReturnValue().Set(::PUERTS_NAMESPACE::v8_impl::Converter<FText>::toScript(Context, FText::Format(Fmt, Args)));
 }
+
+static FText FromStringTable(const FName InTableId, const FString& InKey,
+    const EStringTableLoadingPolicy InLoadingPolicy = EStringTableLoadingPolicy::FindOrLoad)
+{
+    // 这块代码主要是为了兼容 UE5.5 版本之后，FText::FromStringTable 函数的参数从 FString 改为 FTextKey 类型
+    return FText::FromStringTable(InTableId, InKey, InLoadingPolicy);
+}
+
 #endif
 
 #if ENGINE_MAJOR_VERSION > 4
@@ -130,7 +138,7 @@ UsingUStruct(FHitResult)
         PUERTS_NAMESPACE::DefineClass<FText>()
             .Constructor<>()    // make destructor available
             .Method("ToString", MakeFunction(&FText::ToString))
-            .Function("FromStringTable", MakeFunction(&FText::FromStringTable))
+            .Function("FromStringTable", MakeFunction(&FromStringTable))
             .Function("FromString", SelectFunction(FText(*)(const FString&), &FText::FromString))
             .Function("Format", FText_Format, &FormatSignature)
             .Register();

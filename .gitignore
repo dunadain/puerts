@@ -1,3 +1,3 @@
 .DS_Store
 .vscode
-node_modules/
+unity/native/papi-python/build_linux_x64_papi-python_debug

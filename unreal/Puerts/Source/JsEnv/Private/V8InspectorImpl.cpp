@@ -1,6 +1,6 @@
 ﻿/*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -332,16 +332,16 @@ V8InspectorClientImpl::V8InspectorClientImpl(int32_t InPort, v8::Local<v8::Conte
         "Protocol-Version": "1.1"
         })";
 
-        JSONList = R"([{
-        "description": "Puerts Inspector",
-        "id": "0",
-        "title": "Puerts Inspector",
-        "type": "node",
-        )";
-        JSONList += "\"webSocketDebuggerUrl\"";
-        JSONList += ":";
-        JSONList += "\"ws://127.0.0.1:";
-        JSONList += std::to_string(Port) + "\"\r\n}]";
+        JSONList = R"([
+			{
+				"description": "Puerts Inspector",
+				"id": "0",
+				"title": "Puerts Inspector",
+				"type": "node",
+				"webSocketDebuggerUrl": "ws://127.0.0.1:)" +
+                   std::to_string(Port) + R"("
+			}
+		])";
 
         IsAlive = true;
 

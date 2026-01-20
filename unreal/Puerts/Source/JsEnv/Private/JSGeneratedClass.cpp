@@ -1,6 +1,6 @@
 /*
  * Tencent is pleased to support the open source community by making Puerts available.
- * Copyright (C) 2020 THL A29 Limited, a Tencent company.  All rights reserved.
+ * Copyright (C) 2020 Tencent.  All rights reserved.
  * Puerts is licensed under the BSD 3-Clause License, except for the third-party components listed in the file 'LICENSE' which may
  * be subject to their corresponding license terms. This file is subject to the terms and conditions defined in file 'LICENSE',
  * which is part of this source code package.
@@ -191,6 +191,7 @@ UFunction* UJSGeneratedClass::Mixin(v8::Isolate* Isolate, UClass* Class, UFuncti
         Class->AddFunctionToFunctionMap(Tmp, Tmp->GetFName());
         Tmp->SetFlags(Tmp->GetFlags() | RF_Transient);
         Super = Tmp;
+        Super->ClearInternalFlags(EInternalObjectFlags::Native);
         Super->StaticLink(true);
     }
     auto MaybeJSFunction = Cast<UJSGeneratedFunction>(Super);
@@ -274,7 +275,9 @@ void UJSGeneratedClass::Restore(UClass* Class)
     OrphanedClass->ClassGeneratedBy = Class->ClassGeneratedBy;
 #endif
 
-#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 2
+#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION >= 7
+    TObjectPtr<UField>* PP = &Class->Children;
+#elif ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 2
     UField** PP = nullptr;
     UField* ChildrenPtr = Class->Children.Get();
     PP = &ChildrenPtr;
@@ -302,7 +305,7 @@ void UJSGeneratedClass::Restore(UClass* Class)
             JGF->JsFunction.Reset();
 
             *PP = JGF->Next;
-#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 2
+#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 2 && ENGINE_MINOR_VERSION < 7
             if (PP == &ChildrenPtr)
             {
                 Class->Children = ChildrenPtr;
@@ -322,7 +325,7 @@ void UJSGeneratedClass::Restore(UClass* Class)
             PP = &(*PP)->Next;
         }
     }
-#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 2
+#if ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION > 2 && ENGINE_MINOR_VERSION < 7
     PP = &ChildrenPtr;
 #else
     PP = &Class->Children;

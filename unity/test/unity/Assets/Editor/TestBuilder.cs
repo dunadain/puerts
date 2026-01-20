@@ -24,7 +24,7 @@ public class TestBuilder
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateExtensionMethodInfos();
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateLinkXML();
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateCppPlugin();
-        Puerts.Editor.Generator.UnityMenu.GenRegisterInfo();
+        //Puerts.Editor.Generator.UnityMenu.GenRegisterInfo();
     }
     public static void GenV2() 
     {
@@ -32,19 +32,26 @@ public class TestBuilder
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateExtensionMethodInfos();
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateLinkXML();
         PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateCppPlugin();
-        Puerts.Editor.Generator.UnityMenu.GenRegisterInfo();
+        //Puerts.Editor.Generator.UnityMenu.GenRegisterInfo();
+    }
+    public static void GenMinimumWrappersAndBridge() 
+    {
+        PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateMinimumWrappersAndBridge();
+        PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateExtensionMethodInfos();
+        PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateLinkXML();
+        PuertsIl2cpp.Editor.Generator.UnityMenu.GenerateCppPlugin();
     }
     [MenuItem("PuerTS/Tester/BuildV2")]
     public static void BuildWindowsV2() { BuildWindows(true); }
 #endif
 
-    public static void BuildWindows(bool withV2) 
+    public static void BuildWindows(bool withV2)
     {
         PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.IL2CPP);
 
         BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions();
-        buildPlayerOptions.scenes = new[] { "Assets/Scenes/Test.unity"};
-        
+        buildPlayerOptions.scenes = new[] { "Assets/Scenes/Test.unity" };
+
         string extension = "";
         if (Application.platform == RuntimePlatform.WindowsPlayer ||
             Application.platform == RuntimePlatform.WindowsEditor)
@@ -64,7 +71,33 @@ public class TestBuilder
         }
         buildPlayerOptions.locationPathName = "build/" + (withV2 ? "v2" : "v1") + "/Tester" + extension;
         buildPlayerOptions.options = BuildOptions.None;
-        
+
+        BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+        BuildSummary summary = report.summary;
+
+        if (summary.result == BuildResult.Succeeded)
+        {
+            Debug.Log("Build succeeded: " + summary.outputPath + " with " + summary.totalSize + " bytes");
+        }
+
+        if (summary.result == BuildResult.Failed)
+        {
+            Debug.Log("Build failed: " + summary.outputPath);
+        }
+    }
+    
+    public static void BuildAndroid()
+    {
+        PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
+        PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.tencent.puerts_test");
+        PlayerSettings.Android.targetArchitectures = AndroidArchitecture.X86_64;
+
+        BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions();
+        buildPlayerOptions.scenes = new[] { "Assets/Scenes/Test.unity" };
+        buildPlayerOptions.target = BuildTarget.Android;
+        buildPlayerOptions.locationPathName = "build/puerts_test.apk";
+        buildPlayerOptions.options = BuildOptions.None;
+
         BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
         BuildSummary summary = report.summary;
 
