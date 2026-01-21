@@ -42,7 +42,7 @@ public class PuertsWebglBuildProcessing : IPreprocessBuildWithReport, IPostproce
     {
 #if UNITY_WEBGL
 #if UNITY_2022_1_OR_NEWER
-        foreach(var file in report.GetFiles())
+        foreach (var file in report.GetFiles())
 #else
         foreach (var file in report.files)
 #endif
@@ -63,7 +63,7 @@ public class PuertsWebglBuildProcessing : IPreprocessBuildWithReport, IPostproce
                     }
                     else
                     {
-                        UnityEngine.Debug.LogWarning("[PuerTs] Please use 'Tools/PuerTS/Export WXMiniGame'") ;
+                        UnityEngine.Debug.LogWarning("[PuerTs] Please use 'Tools/PuerTS/Export WXMiniGame'");
                         PackJsResources("Browser", dir);
                     }
                 }
@@ -117,8 +117,8 @@ public class PuertsWebglBuildProcessing : IPreprocessBuildWithReport, IPostproce
         {
             Application.dataPath + "/**/Resources/**/*.mjs",
             Application.dataPath + "/**/Resources/**/*.cjs",
-            Path.GetFullPath(Application.dataPath + "/../TsScripts") + "/Resources/**/*.mjs";
-            Path.GetFullPath("Packages/com.tencent.puerts.core/") + "/**/Resources/**/*.mjs"
+            Path.GetFullPath(Application.dataPath + "/../TsScripts") + "/Resources/**/*.mjs",
+            Path.GetFullPath("Packages/com.tencent.puerts.core/") + "/**/Resources/**/*.mjs",
             Path.GetFullPath("Packages/com.maple.tsbehavior") + "/**/Resources/**/*.mjs"
         };
 
@@ -135,7 +135,7 @@ public class PuertsWebglBuildProcessing : IPreprocessBuildWithReport, IPostproce
 
         // Build node command
         var command = currentTarget == "Browser" ? "buildForBrowser" : "buildForMinigame";
-        var args = Path.GetFullPath("Packages/com.tencent.puerts.webgl/Cli/Javascripts~/index.js") + " " + command + " -p " + string.Join(" ", resourcesPattens.ConvertAll(p => 
+        var args = Path.GetFullPath("Packages/com.tencent.puerts.webgl/Cli/Javascripts~/index.js") + " " + command + " -p " + string.Join(" ", resourcesPattens.ConvertAll(p =>
             "\"" + p.Replace("\\", "/") + "\"")) + " -o \"" + output + "\"";
         var executeFileName = "node";
 
@@ -164,28 +164,28 @@ public class PuertsWebglBuildProcessing : IPreprocessBuildWithReport, IPostproce
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        
+
 #if UNITY_EDITOR_OSX
-        startInfo.EnvironmentVariables["PATH"] = "/usr/local/bin:" + Environment.GetEnvironmentVariable("PATH");;
+        startInfo.EnvironmentVariables["PATH"] = "/usr/local/bin:" + Environment.GetEnvironmentVariable("PATH"); ;
 #endif
 
         using (var process = System.Diagnostics.Process.Start(startInfo))
         {
-            process.OutputDataReceived += (sender, e) => 
+            process.OutputDataReceived += (sender, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
                     UnityEngine.Debug.Log(e.Data);
             };
-            process.ErrorDataReceived += (sender, e) => 
+            process.ErrorDataReceived += (sender, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data))
                     UnityEngine.Debug.LogError(e.Data);
             };
-            
+
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             process.WaitForExit();
-            
+
             if (process.ExitCode != 0)
             {
                 UnityEngine.Debug.LogError($"Node process exited with code: {process.ExitCode}");
@@ -218,4 +218,4 @@ public class PuertsWebglBuildProcessing : IPreprocessBuildWithReport, IPostproce
         }
     }
 #endif
-    }
+}
